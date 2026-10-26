@@ -487,6 +487,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 .bomL td.bgrp{background:#f7f8fa;text-align:center;vertical-align:middle;font-weight:600;color:var(--ink2,#334)}.bomL td.nw{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bomT{max-height:560px}.bomT table{min-width:760px}.bomT tr.broot td{background:#eef3f8;font-weight:600}.bomT tr.bhit td{background:#fff7e0}
 .btg{display:inline-block;width:16px;color:var(--sub);cursor:pointer;user-select:none}
+.roBar{background:#eef4fb;border-bottom:1px solid #c9dbef;color:#1d3b5c;padding:8px 22px;font-size:13px}
 </style>
 </head>
 <body>
@@ -529,6 +530,11 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 
 <script>
 'use strict';
+/* ---- 공유용 읽기 전용 사본: 파일 안에 데이터(#qmsShare)가 있으면 그 데이터로만 보여 주고 저장하지 않음 ---- */
+const APP_SRC=(()=>{try{return '<!doctype html>\n'+document.documentElement.outerHTML}catch(e){return ''}})();
+const SHARE=(()=>{try{const e=document.getElementById('qmsShare');return e?JSON.parse(e.textContent):null}catch(e){return null}})();
+const RO=!!SHARE;
+const RO_PH=new Map(RO&&Array.isArray(SHARE.photos)?SHARE.photos.filter(p=>p&&p.id).map(p=>[p.id,p]):[]);
 /* ================= 기본 유틸 ================= */
 const KEY='personalQMS_v1';
 const COLLS=['suppliers','parts','defects','ncrs','receipts','reviews','cases','actions'];
@@ -659,11 +665,12 @@ function mailLink(v){return v?`<a class="lk" href="mailto:${esc(v)}">${esc(v)}</
 function cLabel(c){return `${c.name}${c.role?` (${c.role})`:''}`}
 let loadFailed=null,saveFailed=null;
 let storageBlocked=false;
-function load(){try{localStorage.getItem('__t')}catch(e){storageBlocked=true;return defaultDB()}let r=null;try{r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r))}catch(e){console.error(e);loadFailed=String(e&&e.message||e);try{if(r)localStorage.setItem(KEY+'_broken',r)}catch(_){}}return defaultDB()}
+function load(){if(RO){const d={...SHARE.db};delete d.photos;return migrate(d)}try{localStorage.getItem('__t')}catch(e){storageBlocked=true;return defaultDB()}let r=null;try{r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r))}catch(e){console.error(e);loadFailed=String(e&&e.message||e);try{if(r)localStorage.setItem(KEY+'_broken',r)}catch(_){}}return defaultDB()}
 let db=load();
 let backupDir=null,photoDir=null;  // 사진 · 첨부 폴더, 백업 폴더 (이 PC, 선택)
 
 function save(){
+  if(RO)return;  // 읽기 전용 사본은 저장하지 않음
   if(!undoBusy&&undoSnap&&!save._keep)hideUndo();
   if(loadFailed){renderAlert();toast('데이터를 읽지 못해 저장을 멈췄습니다 — 위 빨간 안내를 확인하세요');return}
   lockSev();
@@ -687,6 +694,7 @@ function downloadBroken(){let r='';try{r=localStorage.getItem(KEY+'_broken')||lo
 const backupDays=()=>Math.max(1,num(db.settings.backupDays)||7);
 const backupDue=()=>!db.meta.lastBackup||diffDays(loc(db.meta.lastBackup,10),today())>=backupDays();
 function updateSaveInfo(){
+  if(RO){const e=$('#saveInfo');if(e)e.textContent='읽기 전용 사본';const l=$('#linkInfo');if(l)l.textContent='';return}
   const s=db.meta.saved?new Date(db.meta.saved):null;
   $('#saveInfo').textContent=storageBlocked?'미리보기 · 저장 안 됨':saveFailed?'⚠ 저장 실패':loadFailed?'⚠ 저장 중지':s?`자동저장 ${pad(s.getHours())}:${pad(s.getMinutes())}:${pad(s.getSeconds())}`:'';
   $('#linkInfo').textContent=[photoDir?`📷 ${photoDir.name}`:lazyH.photoDir?`📷 ${lazyH.photoDir.name} (저장할 때 허용)`:'',backupDir?`🗂 ${backupDir.name}`:lazyH.backupDir?`🗂 ${lazyH.backupDir.name} (백업할 때 허용)`:''].filter(Boolean).join('  ');
@@ -1116,14 +1124,14 @@ function fitCells(root){
     if(lines.length&&lines.every(l=>l.length<=14&&!/\s.*\s.*\s/.test(l)))td.classList.add('nw');
   });
 }
-(()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
+(()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
 const APP_VER='0.1';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
   $('#appTitle').innerHTML=`${esc(S.company?S.company+' 품질관리':'개인 QMS')} <span style="font:600 11px/1 var(--f-mono,monospace);color:var(--sub);vertical-align:middle">ver ${APP_VER}</span>`;
-  document.title=S.company?S.company+' QMS':'개인 QMS';
+  document.title=(RO?'[읽기 전용] ':'')+(S.company?S.company+' QMS':'개인 QMS');
   $('#printHead').innerHTML=`${S.logo?`<img src="${S.logo}" alt="">`:''}<div class="t"><b>${esc(S.company||'품질관리')} — ${esc(tab)}${state.tab==='dash'?' ('+esc(state.dashMonth)+')':''}</b><span>${esc(S.dept)}</span></div><div class="d">출력일 ${today()}</div>`;
 }
 function logoHead(){const S=db.settings;return (S.logo||S.company)?`<div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid #14213d;padding-bottom:8px;margin-bottom:12px">${S.logo?`<img src="${S.logo}" style="max-height:44px;max-width:180px;object-fit:contain">`:''}<div style="flex:1"><b style="font-size:15px">${esc(S.company)}</b><br><span style="font-size:11px;color:#555">${esc(S.dept)}</span></div><div style="font-size:11px;color:#555">출력일 ${today()}</div></div>`:''}
@@ -4275,6 +4283,8 @@ function renderData(){
       sv('전체 백업',`모든 데이터와 사진 · 첨부 문서를 <b>JSON 파일 하나</b>로 받습니다. 이 파일 하나만 있으면 어느 PC에서든 그대로 복원됩니다.${backupDir||lazyH.backupDir?' 백업 폴더가 지정돼 있어 <b>그 폴더에 저장</b>합니다.':''}`,btn(backupDir||lazyH.backupDir?'폴더에 저장':'다운로드','exportJSON(true)','p'))+
       sv('가벼운 백업 (사진 제외)','사진 · 첨부 문서를 빼서 파일이 작습니다. 데이터만 자주 남겨 둘 때 씁니다.',btn('다운로드','exportJSON(false)'))+
       sv('백업 알림 주기','마지막 백업 후 이 일수가 지나면 대시보드에 ‘백업 필요’를 띄웁니다.',sNum('backupDays','일마다',1,60)))+
+    sg('읽기 전용으로 공유',
+      sv('공유 파일 만들기',`지금 데이터를 <b>HTML 파일 하나</b>로 만듭니다. 받은 사람은 더블클릭만 하면 대시보드 · 불량 · NCR · 협력사 품질 · BOM을 보고 출력할 수 있고, <b>수정 · 저장은 되지 않습니다</b>. 만든 시점의 사본이라 최신 내용은 다시 만들어 보내세요.<br><span class="muted">파일 안에 데이터가 그대로 들어 있으니 받을 사람을 가려서 보내세요.</span>`,`<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('사진 포함','makeShareFile(true)','p')}${btn('사진 제외 (가벼움)','makeShareFile(false)')}</span>`))+
     sg('복원 · 다른 PC로 옮기기',
       sv('백업으로 교체','현재 데이터를 백업 파일 내용으로 <b>모두 교체</b>합니다. 새 PC에서 처음 열었을 때 이것을 쓰세요.',btn('파일 선택','pickImport(\'replace\')','d'))+
       sv('백업 합치기','현재 데이터는 두고, 백업 파일에만 있는 기록을 더합니다. 같은 기록은 더 최근에 고친 쪽을 남깁니다.',btn('파일 선택','pickImport(\'merge\')')))+
@@ -4286,6 +4296,16 @@ function renderData(){
     sg('초기화',sv('전체 초기화','모든 데이터와 사진을 영구 삭제합니다. 되돌릴 수 없으니 먼저 백업하세요.',btn('초기화','resetAll()','dz')));
   if(tab==='storage')setTimeout(showUsage,0);
   return `<div class="set"><aside class="snav">${nav}</aside><section class="spane"><div class="row" style="margin-bottom:6px"><h2>${title}</h2><span style="flex:1"></span><span id="setSaved" class="muted" style="opacity:0;transition:opacity .4s;font-size:12px"></span></div>${(P[tab]||P.general)()}<div class="help" style="margin:-8px 4px 20px">설정은 값을 바꾸면 바로 저장됩니다.</div></section></div>`;
+}
+// 읽기 전용 공유 파일: 이 앱 + 지금 데이터(사진 포함)를 HTML 파일 하나로
+async function makeShareFile(withPhotos){
+  if(!APP_SRC||!APP_SRC.includes('<head>')){toast('이 화면에서는 공유 파일을 만들 수 없습니다');return}
+  let photos=[];if(withPhotos){try{photos=(await photoList()).filter(p=>p&&!phIsPending(p))}catch(e){toast('사진을 읽지 못해 사진 없이 만듭니다')}}
+  const S=db.settings,meta={created:now(),by:(S.owners||[])[0]||'',company:S.company||'',ver:typeof APP_VER!=='undefined'?APP_VER:'',photos:photos.length};
+  const data=JSON.stringify({meta,db,photos}).replace(/</g,'\\u003c');
+  const html=APP_SRC.replace('<head>','<head>\n<script id="qmsShare" type="application/json">'+data+'<\/script>');
+  download(`QMS_읽기전용_${today()}${withPhotos?'':'_사진제외'}.html`,html,'text/html;charset=utf-8');
+  toast(`읽기 전용 공유 파일 ${(html.length/1048576).toFixed(1)}MB를 만들었습니다 — 메일 · Teams · 공유 폴더로 보내세요`);
 }
 async function exportJSON(withPhotos=true){
   if(withPhotos===true&&(backupDir||lazyH.backupDir)){
@@ -4471,6 +4491,8 @@ function idb(){
 async function hTx(mode,fn){const d=await idb();return new Promise((res,rej)=>{const tx=d.transaction('handles',mode),out=fn(tx.objectStore('handles'));tx.oncomplete=()=>res(out instanceof IDBRequest?out.result:out);tx.onerror=()=>rej(tx.error)})}
 const hGet=k=>hTx('readonly',s=>s.get(k)),hPut=(k,v)=>hTx('readwrite',s=>{s.put(v,k)}),hDel=k=>hTx('readwrite',s=>{s.delete(k)});
 async function pTx(mode,fn){
+  if(RO){const st={get:id=>({result:RO_PH.get(id)}),getAll:()=>({result:[...RO_PH.values()]}),getAllKeys:()=>({result:[...RO_PH.keys()]}),put:()=>{},delete:()=>{},clear:()=>{}};
+    const out=fn(st);return out&&typeof out==='object'&&'result' in out?out.result:out}
   const d=await idb();
   return new Promise((res,rej)=>{
     const tx=d.transaction('photos',mode),out=fn(tx.objectStore('photos'));
@@ -5743,10 +5765,49 @@ async function a3Report(kind,id){
   reportShow(w,html,`A3보고서_${(c&&c.CaseNo)||(n&&n.no)||(d&&d.date)||today()}.html`);
 }
 
-if(!loadFailed)lockSev();
+/* ---- 읽기 전용 사본 모드 ---- */
+const RO_FN=['saveDefect','saveNcr','saveInv','saveIca','saveSup','delDefect','delSup','delPart','delCost','openMasterImport','openBomImport','openRcvImport','openRcvLineImport','editReceipts',
+  'bomClear','resetAll','pickImport','exportJSON','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
+  'ncrFromDefect','quickSup','pwaInstall','openImport','chooseQmsDir','makeShareFile','offerNcrAfterVerdict','addCost','addLabor','addBaseCost','addContact','unlinkDefect','miApply','bomApply','rlApply','riCommit','routeGo'].filter(n=>typeof window[n]==='function');
+const RO_RE=new RegExp('\\b('+RO_FN.join('|')+')\\(|\\b(edit(Defect|Ncr|Sup|Part))\\(\\)');
+const RO_ACT=new Set(['czNav','open','filtq','csv','tab','report','gotoTab','filt','actFilt']);
+function roSweep(root){
+  if(!RO||!root)return;
+  root.querySelectorAll('input,select,textarea,button,a[onclick],label.b,[data-act]').forEach(el=>{
+    if(el.dataset.roDone)return;el.dataset.roDone='1';
+    const h=['onclick','oninput','onchange'].map(a=>el.getAttribute(a)||'').join(' '),act=el.dataset.act;
+    if(el.closest('#mfoot'))return;
+    if(act&&!RO_ACT.has(act)&&!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)){el.style.display='none';return}
+    if(el.matches('label.b')&&el.querySelector('input[type=file]')){el.style.display='none';return}
+    if(el.tagName==='BUTTON'||el.tagName==='A'){if(RO_RE.test(h))el.style.display='none';return}
+    if(el.type==='file'){el.disabled=true;return}
+    const filt=/state\.|msState\.|czUi\.|deb\(|ncrTab|ncrMode|bomSelect|bomToggle|bomFold|\bgo\(|render\(/.test(h)||(act&&RO_ACT.has(act));
+    if(!filt||el.closest('#mf'))el.disabled=true;
+  });
+}
+if(RO){
+  RO_FN.forEach(n=>{window[n]=function(){toast('읽기 전용 사본입니다 — 수정 · 저장할 수 없습니다')}});
+  ['editDefect','editNcr','editSup','editPart','editInv','editIca'].forEach(n=>{const f=window[n];if(typeof f!=='function')return;window[n]=function(id,...a){if(!id){toast('읽기 전용 사본입니다 — 새로 등록할 수 없습니다');return}return f.call(this,id,...a)}});
+  const _om=openModal;
+  window.openModal=function(t,b,btns){
+    const keep=(btns||[]).filter(x=>/닫기|취소|출력|인쇄|PDF|CSV|보고|통보서|8D|A3|요청서/.test(x.label||'')&&!/저장|등록|발행|삭제/.test(x.label||'')).map(x=>/^취소$/.test(x.label)?{...x,label:'닫기',fn:()=>closeModal(true)}:x);
+    if(!keep.some(x=>/닫기/.test(x.label)))keep.push({label:'닫기',cls:'p',fn:()=>closeModal(true)});
+    _om(t,b,keep);$('#mt').insertAdjacentHTML('beforeend',' <span class="bg mut" style="font-size:11px;vertical-align:middle">읽기 전용</span>');
+    setTimeout(()=>roSweep($('#modal')),0);
+  };
+  new MutationObserver(()=>roSweep($('#modal'))).observe($('#modal'),{childList:true,subtree:true});
+  // 창 아래 버튼은 화면마다 다시 그려지므로 그때마다 정리 (출력 · 닫기만)
+  const roFoot=()=>{$('#mfoot').querySelectorAll('button').forEach(b=>{const t=b.textContent;if(!/닫기|취소|출력|인쇄|PDF|CSV|보고|통보서|8D|A3/.test(t)||/저장|등록|발행|삭제|요청|복사|교체|반영/.test(t))b.style.display='none'})};
+  new MutationObserver(roFoot).observe($('#mfoot'),{childList:true});
+  document.documentElement.classList.add('ro');
+  const m=SHARE.meta||{};
+  document.querySelector('nav').insertAdjacentHTML('afterend',`<div class="roBar noprint">📖 <b>읽기 전용 사본</b> — ${esc(m.company||'')} ${esc(m.by||'')} · 기준 <b>${esc(loc(m.created)||'-')}</b> · ver ${esc(m.ver||'')}${m.photos!=null?` · 사진 ${m.photos}장`:''} <span class="muted">— 보기 · 검색 · 출력만 됩니다. 고친 내용은 저장되지 않습니다.</span></div>`);
+  ['hdrBk','hdrInstall'].forEach(i=>{const e=$('#'+i);if(e)e.style.display='none'});
+}
+if(!loadFailed&&!RO)lockSev();
 render();renderAlert();updateSaveInfo();
 // 데이터 원본은 브라우저. 사진·첨부 폴더와 백업 폴더만 이 PC 폴더에 사본으로 저장 (예전 OneDrive 연결 정보는 정리)
-(async()=>{try{
+(async()=>{if(RO)return;try{
   for(const k of ['qmsDir','dataFile'])await hDel(k).catch(()=>{});
   for(const k of ['photoDir','backupDir']){const h=await hGet(k);if(!h)continue;
     if(await permOK(h,false))dirAttach(k,h,true);else lazyH[k]=h}
@@ -5756,7 +5817,7 @@ render();renderAlert();updateSaveInfo();
 const isWebApp=/^https?:$/.test(location.protocol);
 const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 let pwaPrompt=null;
-if(isWebApp&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(e=>console.warn('서비스 워커 등록 실패',e));
+if(!RO&&isWebApp&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(e=>console.warn('서비스 워커 등록 실패',e));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaPrompt=e;const b=$('#hdrInstall');if(b&&!isStandalone())b.style.display=''});
 window.addEventListener('appinstalled',()=>{pwaPrompt=null;const b=$('#hdrInstall');if(b)b.style.display='none';toast('앱으로 설치했습니다 — 바탕화면 · 시작 메뉴의 ‘개인 QMS’로 여세요')});
 async function pwaInstall(){
