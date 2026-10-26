@@ -487,6 +487,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 .bomL td.bgrp{background:#f7f8fa;text-align:center;vertical-align:middle;font-weight:600;color:var(--ink2,#334)}.bomL td.nw{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bomT{max-height:560px}.bomT table{min-width:760px}.bomT tr.broot td{background:#eef3f8;font-weight:600}.bomT tr.bhit td{background:#fff7e0}
 .btg{display:inline-block;width:16px;color:var(--sub);cursor:pointer;user-select:none}
+.b.due{background:var(--warnb);border-color:var(--warn);color:var(--warn);font-weight:600}
 .roBar{background:#eef4fb;border-bottom:1px solid #c9dbef;color:#1d3b5c;padding:8px 22px;font-size:13px}
 </style>
 </head>
@@ -757,6 +758,8 @@ function downloadBroken(){let r=brokenRaw||'';if(!r)try{r=localStorage.getItem(K
 const backupDays=()=>Math.max(1,num(db.settings.backupDays)||7);
 const backupDue=()=>!db.meta.lastBackup||diffDays(loc(db.meta.lastBackup,10),today())>=backupDays();
 function updateSaveInfo(){
+  {const bk=$('#hdrBk');if(bk&&!RO){const due=!loadFailed&&!storageBlocked&&COLLS.some(c=>(db[c]||[]).length)&&backupDue();bk.textContent=due?'백업 필요':'백업';bk.classList.toggle('due',due);
+    bk.title=(due?`마지막 백업: ${db.meta.lastBackup?loc(db.meta.lastBackup,10):'없음'} — 눌러서 지금 백업. `:'')+(backupDir||lazyH.backupDir?'백업 폴더에 저장합니다':'백업 파일을 다운로드합니다 (설정에서 백업 폴더를 지정하면 하루 한 번 자동 백업)')}}
   if(RO){const e=$('#saveInfo');if(e)e.textContent='읽기 전용 사본';const l=$('#linkInfo');if(l)l.textContent='';return}
   const s=db.meta.saved?new Date(db.meta.saved):null;
   $('#saveInfo').textContent=storageBlocked?'미리보기 · 저장 안 됨':saveFailed?'⚠ 저장 실패':loadFailed?'⚠ 저장 중지':s?`자동저장 ${pad(s.getHours())}:${pad(s.getMinutes())}:${pad(s.getSeconds())}`:'';
@@ -1189,7 +1192,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.2';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -1509,7 +1512,6 @@ function renderDash(){
   const total=COLLS.reduce((a,c)=>a+db[c].length,0);
   if(!total&&/^https?:$/.test(location.protocol))banner=`<div class="banner">📦 <b>파일(개인 QMS.html)로 쓰던 데이터가 있나요?</b> 그 파일을 열어 화면 위 <b>백업</b>을 누른 뒤, 여기서 <button class="b s p" onclick="pickImport('replace')">백업 파일로 복원</button>하면 사진까지 그대로 옮겨집니다. <span class="muted">처음 쓰는 경우에는 <b>기준정보</b>에서 협력사·부품을 등록하세요.</span></div>`;
   else if(!total)banner=`<div class="banner">데이터가 비어 있습니다. <b>기준정보</b>에서 협력사·부품을 등록하거나(엑셀 붙여넣기 지원), <b>불량 관리</b>에서 불량을 등록하세요. 기존 백업 파일이 있으면 <a class="lk" onclick="state.setTab='backup';go('data')">설정·백업</a>에서 복원할 수 있습니다.</div>`;
-  else if(backupDue())banner=`<div class="banner noprint">💾 마지막 백업: <b>${db.meta.lastBackup?loc(db.meta.lastBackup,10):'없음'}</b> — 데이터는 이 PC 브라우저에만 있으니 ${backupDays()}일마다 백업 파일을 받아 두세요. <button class="b s p" onclick="exportJSON()">지금 백업</button> <a class="lk" onclick="state.setTab='backup';go('data')">백업 방법</a></div>`;
   const li=(arr,fn)=>arr.length?arr.slice(0,8).map(fn).join('')+(arr.length>8?`<li class="muted">외 ${arr.length-8}건</li>`:''):'';
   const own=x=>!czOwns(x.n,'ncr'),ownD=d=>!czOwns(d,'defect');
   const actions=czDashItems()+
@@ -4247,7 +4249,7 @@ function bomApply(){
 /* ================= 설정 · 백업 ================= */
 function showUsage(){if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const el=$('#usage');if(el)el.textContent=`브라우저 저장공간 사용 ${(e.usage/1048576).toFixed(1)}MB / 가용 약 ${(e.quota/1073741824).toFixed(1)}GB`}).catch(()=>{})}
 const SET_NAV=[['옵션',[['general','일반','M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0'],['brand','로고 · 서명','M4 16l4-4 3 3 5-6 4 5M4 5h16v14H4z'],['defect','불량 관리','M12 3l9 16H3zM12 10v4M12 17h.01'],['sev','심각도 평가','M5 20V10M12 20V4M19 20v-7'],['ncr','NCR · 통보서','M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6'],['docno','문서번호','M9 4L7 20M17 4l-2 16M4 9h16M3 15h16'],['eval','대책서 평가','M9 11l3 3 8-8M20 12v7H4V5h11'],['sup','협력사 등급','M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z']]],
-  ['데이터',[['backup','백업 · 복원','M12 3v12M7 10l5 5 5-5M4 19h16'],['storage','저장 공간 · 초기화','M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3']]]];
+  ['데이터',[['backup','백업 · 복원','M12 3v12M7 10l5 5 5-5M4 19h16'],['storage','저장 공간 · 폴더','M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3']]]];
 const sv=(t,d,c,blk)=>`<div class="srow${blk?' blk':''}"><div class="si"><div class="st">${t}</div>${d?`<div class="sd">${d}</div>`:''}</div><div class="sc">${c}</div></div>`;
 const sg=(h,rows)=>`${h?`<div class="sgh">${h}</div>`:''}<div class="sgrp">${rows}</div>`;
 const sNum=(k,unit,min,max)=>`<input type="number" class="snum" value="${esc(db.settings[k])}" ${min!=null?`min="${min}"`:''} ${max!=null?`max="${max}"`:''} onchange="setS('${k}',this.value,'num',this)">${unit?`<span class="muted">${unit}</span>`:''}`;
@@ -4333,29 +4335,27 @@ function renderData(){
   P.sup=()=>sg('PPM 초과 SCAR 권고',sv('권고 기준 PPM','협력사·공동 귀책 불량 기준 월 PPM이 이 값을 넘으면 초과로 봅니다. 0이면 권고하지 않습니다.',sNum('ppmScar','PPM 초과',0))+sv('연속 개월','최근 완료된 달부터 이 개월 수만큼 연속으로 초과하면 대시보드에 NCR(8D) 발행을 권고합니다.',sNum('ppmScarMonths','개월',1,12)))+sg('PPM 등급 기준',
     sv('A등급','협력사 귀책 불량수량 ÷ 입고수량 × 1,000,000 이 값 이하',sNum('gradeA','PPM 이하',0))+
     sv('B등급','',sNum('gradeB','PPM 이하',0))+sv('C등급','이 값을 넘으면 D등급입니다.',sNum('gradeC','PPM 이하',0)));
-  P.backup=()=>sg('저장 방식',
-    sv('원본 (자동 저장)','입력하면 바로 <b>이 PC의 브라우저</b>(Edge · Chrome) 안에 저장됩니다. 인터넷으로 보내지 않고, 연결 · 허용 절차도 없습니다.',`<span class="muted">협력사 ${cnt[0]} · 부품 ${cnt[1]} · 불량 ${cnt[2]} · NCR ${cnt[3]} · RCA ${db.cases.length} · 사진 ${nPh}</span>`)+
-    sv('삭제 방지',`브라우저에 이 데이터를 지우지 말라고 요청해 두었습니다. 단, <b>‘인터넷 사용 기록 삭제’에서 쿠키 · 사이트 데이터를 지우거나</b> 회사 정책으로 종료 시 자동 삭제되면 사라질 수 있습니다.`,'<span id="persistSt" class="muted">확인 중…</span>')+
-    sv('마지막 백업','',`<b>${db.meta.lastBackup?loc(db.meta.lastBackup):'없음'}</b>${backupDue()?' <span class="bg warn">백업 필요</span>':''}`))+
-    sg('이 PC 저장 폴더 (회사 노트북)',
-      sv('사진 · 첨부 폴더',`불량 사진 · 특채 문서 등 첨부를 이 폴더에 <b>파일로도</b> 저장합니다 (<code>NCR번호_날짜_01.jpg</code>, 발행 전은 <code>미발행_품번_날짜_01.jpg</code>). 앱에서 사진을 지우면 파일도 지워집니다.<br>${dirSt('photoDir')}`,dirBtns('photoDir',`<button class="b s" onclick="photoDirNow()">지금 저장</button>`))+
-      sv('백업 폴더',`백업 버튼(화면 위 ‘백업’ 포함)을 누르면 다운로드 대신 이 폴더에 저장합니다. 사용이 허용된 날은 <b>하루 한 번 자동 백업</b>도 합니다.<br>${dirSt('backupDir')}`,dirBtns('backupDir',`<button class="b s" onclick="exportJSON(true)">지금 백업</button>`))+
-      sv('백업 보관 개수','폴더에 최근 몇 개의 백업 파일을 남길지 정합니다 (0 = 모두 보관).',sNum('backupKeep','개',0,365))+
-      sv('허용 창에 대해',`브라우저 보안상 앱을 다시 열면 폴더 쓰기 허용이 초기화됩니다. 앱을 열 때는 묻지 않고, <b>사진을 저장하거나 백업할 때만</b> 허용 창이 뜹니다. 창에 <b>‘방문할 때마다 허용’</b>이 있으면 그것을 고르세요 — 다음부터는 묻지 않습니다.`,'',1))+
-    sg('백업 (파일로 받기)',
-      sv('전체 백업',`모든 데이터와 사진 · 첨부 문서를 <b>JSON 파일 하나</b>로 받습니다. 이 파일 하나만 있으면 어느 PC에서든 그대로 복원됩니다.${backupDir||lazyH.backupDir?' 백업 폴더가 지정돼 있어 <b>그 폴더에 저장</b>합니다.':''}`,btn(backupDir||lazyH.backupDir?'폴더에 저장':'다운로드','exportJSON(true)','p'))+
-      sv('가벼운 백업 (사진 제외)','사진 · 첨부 문서를 빼서 파일이 작습니다. 데이터만 자주 남겨 둘 때 씁니다.',btn('다운로드','exportJSON(false)'))+
-      sv('백업 알림 주기','마지막 백업 후 이 일수가 지나면 대시보드에 ‘백업 필요’를 띄웁니다.',sNum('backupDays','일마다',1,60)))+
-    sg('읽기 전용으로 공유',
-      sv('공유 파일 만들기',`지금 데이터를 <b>HTML 파일 하나</b>로 만듭니다. 받은 사람은 더블클릭만 하면 대시보드 · 불량 · NCR · 협력사 품질 · BOM을 보고 출력할 수 있고, <b>수정 · 저장은 되지 않습니다</b>. 만든 시점의 사본이라 최신 내용은 다시 만들어 보내세요.<br><span class="muted">파일 안에 데이터가 그대로 들어 있으니 받을 사람을 가려서 보내세요.</span>`,`<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('사진 포함','makeShareFile(true)','p')}${btn('사진 제외 (가벼움)','makeShareFile(false)')}</span>`))+
+  // 백업은 '자동 백업(폴더) + 화면 위 백업 버튼 하나'로 — 사진 폴더 · 저장 방식은 '저장 공간'으로
+  P.backup=()=>sg('자동 백업',
+      sv('백업 폴더',`지정해 두면 앱을 쓰는 날 <b>하루 한 번 자동으로</b> 이 폴더에 백업합니다 (사진 · 첨부 포함, JSON 파일 하나). 따로 백업할 때는 화면 위 <b>백업</b> 버튼을 누르세요 — 폴더가 없으면 다운로드로 받습니다.<br>${dirSt('backupDir')}`,dirBtns('backupDir',''))+
+      sv('마지막 백업','',`<b>${db.meta.lastBackup?loc(db.meta.lastBackup):'없음'}</b>${backupDue()?' <span class="bg warn">백업 필요</span>':''}`)+
+      ((backupDir||lazyH.backupDir)?sv('보관 개수','폴더에 최근 몇 개의 백업 파일을 남길지 정합니다 (0 = 모두 보관).',sNum('backupKeep','개',0,365)):'')+
+      sv('백업 알림','마지막 백업 후 이 일수가 지나면 화면 위 백업 버튼이 <b>‘백업 필요’</b>(주황색)로 바뀝니다.',sNum('backupDays','일마다',1,60)))+
     sg('복원 · 다른 PC로 옮기기',
       sv('백업으로 교체','현재 데이터를 백업 파일 내용으로 <b>모두 교체</b>합니다. 새 PC에서 처음 열었을 때 이것을 쓰세요.',btn('파일 선택','pickImport(\'replace\')','d'))+
       sv('백업 합치기','현재 데이터는 두고, 백업 파일에만 있는 기록을 더합니다. 같은 기록은 더 최근에 고친 쪽을 남깁니다.',btn('파일 선택','pickImport(\'merge\')')))+
-    sg('권장 방법',sv('이렇게 쓰세요',`① <b>한 PC(회사 노트북)에서만</b> 입력합니다 (데이터는 그 PC 브라우저에 자동 저장).<br>② 위 <b>사진 · 첨부 폴더</b>와 <b>백업 폴더</b>를 지정해 둡니다 — 사진은 저장할 때마다, 백업은 하루 한 번 폴더에 쌓입니다.<br>③ 폴더를 지정하지 않았다면 <b>${backupDays()}일마다</b> 대시보드의 ‘지금 백업’을 누릅니다.<br>④ PC를 바꾸거나 다른 PC에서 써야 하면, 최신 백업 파일을 그 PC에서 <b>백업으로 교체</b>합니다. 두 PC에서 번갈아 입력하는 것은 피하세요.`,'',1));
+    sg('읽기 전용으로 공유',
+      sv('공유 파일 만들기',`지금 데이터를 <b>HTML 파일 하나</b>로 만듭니다. 받은 사람은 더블클릭만 하면 대시보드 · 불량 · NCR · 협력사 품질 · BOM을 보고 출력할 수 있고, <b>수정 · 저장은 되지 않습니다</b>. 만든 시점의 사본이라 최신 내용은 다시 만들어 보내세요.<br><span class="muted">파일 안에 데이터가 그대로 들어 있으니 받을 사람을 가려서 보내세요.</span>`,`<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('사진 포함','makeShareFile(true)','p')}${btn('사진 제외 (가벼움)','makeShareFile(false)')}</span>`));
   function dirSt(k){const h=k==='photoDir'?photoDir:backupDir,lz=lazyH[k];return h?`<span class="bg ok">사용 중</span> <b>${esc(h.name)}</b>`:lz?`<span class="bg warn">허용 대기</span> <b>${esc(lz.name)}</b> <span class="muted">— ${k==='photoDir'?'사진을 저장할 때':'백업할 때'} 허용 창이 뜹니다</span>`:'<span class="bg mut">지정 안 됨</span>'}
   function dirBtns(k,extra){const on=!!((k==='photoDir'?photoDir:backupDir)||lazyH[k]);return `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${on?extra:''}<button class="b s ${on?'':'p'}" onclick="pickDir('${k}')">${on?'다른 폴더':'폴더 지정'}</button>${on?`<button class="b s" onclick="unlinkDir('${k}')">해제</button>`:''}</span>`}
   setTimeout(()=>{const e=$('#persistSt');if(!e)return;if(!(navigator.storage&&navigator.storage.persisted)){e.textContent='브라우저가 지원하지 않음';return}navigator.storage.persisted().then(v=>{e.innerHTML=v?'<span class="bg ok">삭제 방지 적용</span>':'<span class="bg warn">미적용</span> <span class="muted">— 백업을 더 자주 받으세요</span>'}).catch(()=>{e.textContent='-'})},0);
-  P.storage=()=>sg('저장 공간',sv('데이터 저장소',dataStore==='idb'?'불량 · NCR · 기준정보 · BOM · 입고 등 모든 기록과 사진을 브라우저의 <b>대용량 저장소</b>에 보관합니다 (PC 디스크 여유 공간 범위에서 수백 MB 이상).':'이 환경에서는 대용량 저장소를 쓸 수 없어 <b>기본 저장소</b>(약 5MB)에 보관합니다. 사진은 별도 저장소에 보관됩니다.',`<span class="muted">기록 ${(n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB')(JSON.stringify(db).length)}</span>`)+sv('브라우저 저장공간','이 사이트가 쓰는 전체 용량입니다 (사진 포함).','<span id="usage" class="muted">계산 중…</span>'))+
+  P.storage=()=>sg('원본 데이터',
+      sv('원본 (자동 저장)','입력하면 바로 <b>이 PC의 브라우저</b>(Edge · Chrome) 안에 저장됩니다. 인터넷으로 보내지 않고, 연결 · 허용 절차도 없습니다.',`<span class="muted">협력사 ${cnt[0]} · 부품 ${cnt[1]} · 불량 ${cnt[2]} · NCR ${cnt[3]} · RCA ${db.cases.length} · 사진 ${nPh}</span>`)+
+      sv('삭제 방지',`브라우저에 이 데이터를 지우지 말라고 요청해 두었습니다. 단, <b>‘인터넷 사용 기록 삭제’에서 쿠키 · 사이트 데이터를 지우거나</b> 회사 정책으로 종료 시 자동 삭제되면 사라질 수 있습니다.`,'<span id="persistSt" class="muted">확인 중…</span>'))+
+    sg('사진 · 첨부 폴더 (이 PC)',
+      sv('사진 · 첨부 폴더',`불량 사진 · 특채 문서 등 첨부를 이 폴더에 <b>파일로도</b> 저장합니다 (<code>NCR번호_날짜_01.jpg</code>, 발행 전은 <code>미발행_품번_날짜_01.jpg</code>). 앱에서 사진을 지우면 파일도 지워집니다.<br>${dirSt('photoDir')}`,dirBtns('photoDir',`<button class="b s" onclick="photoDirNow()">지금 저장</button>`))+
+      sv('허용 창에 대해',`브라우저 보안상 앱을 다시 열면 폴더 쓰기 허용이 초기화됩니다. 앱을 열 때는 묻지 않고, <b>사진을 저장하거나 백업할 때만</b> 허용 창이 뜹니다. 창에 <b>‘방문할 때마다 허용’</b>이 있으면 그것을 고르세요 — 다음부터는 묻지 않습니다.`,'',1))+
+    sg('저장 공간',sv('데이터 저장소',dataStore==='idb'?'불량 · NCR · 기준정보 · BOM · 입고 등 모든 기록과 사진을 브라우저의 <b>대용량 저장소</b>에 보관합니다 (PC 디스크 여유 공간 범위에서 수백 MB 이상).':'이 환경에서는 대용량 저장소를 쓸 수 없어 <b>기본 저장소</b>(약 5MB)에 보관합니다. 사진은 별도 저장소에 보관됩니다.',`<span class="muted">기록 ${(n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB')(JSON.stringify(db).length)}</span>`)+sv('브라우저 저장공간','이 사이트가 쓰는 전체 용량입니다 (사진 포함).','<span id="usage" class="muted">계산 중…</span>'))+
     sg('초기화',sv('전체 초기화','모든 데이터와 사진을 영구 삭제합니다. 되돌릴 수 없으니 먼저 백업하세요.',btn('초기화','resetAll()','dz')));
   if(tab==='storage')setTimeout(showUsage,0);
   return `<div class="set"><aside class="snav">${nav}</aside><section class="spane"><div class="row" style="margin-bottom:6px"><h2>${title}</h2><span style="flex:1"></span><span id="setSaved" class="muted" style="opacity:0;transition:opacity .4s;font-size:12px"></span></div>${(P[tab]||P.general)()}<div class="help" style="margin:-8px 4px 20px">설정은 값을 바꾸면 바로 저장됩니다.</div></section></div>`;
