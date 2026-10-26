@@ -545,6 +545,14 @@ const addDays=(s,n)=>{if(!s)return '';const d=new Date(s+'T00:00:00');d.setDate(
 const diffDays=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);
 const num=v=>Number(v)||0;
 const won=n=>Math.round(n||0).toLocaleString('ko-KR');
+/* ---- 통화: 부품 단가는 협력사 통화 그대로 저장하고, 비용(COPQ)은 설정의 환율로 원화 환산 ---- */
+const CURS=['KRW','USD','EUR','CNY','JPY','MXN','INR','VND'];
+const CUR_L={KRW:'원 (KRW)',USD:'미국 달러 (USD)',EUR:'유로 (EUR)',CNY:'중국 위안 (CNY)',JPY:'일본 엔 (JPY)',MXN:'멕시코 페소 (MXN)',INR:'인도 루피 (INR)',VND:'베트남 동 (VND)'};
+const curOf=p=>(p&&p.currency)||'KRW';
+const fxRate=c=>!c||c==='KRW'?1:num((db.settings.fx||{})[c]);
+const partKRW=p=>{if(!p||p.price===''||p.price==null)return 0;return Math.round(num(p.price)*fxRate(curOf(p))*100)/100};
+const fmtAmt=(v,c)=>{c=c||'KRW';if(v===''||v==null)return '';const n=num(v);return c==='KRW'?won(n)+'원':n.toLocaleString('ko-KR',{maximumFractionDigits:4})+' '+c};
+const fmtPrice=p=>p&&p.price!==''&&p.price!=null?fmtAmt(p.price,curOf(p)):'';
 const sum=(arr,k)=>arr.reduce((a,r)=>a+num(typeof k==='function'?k(r):r[k]),0);
 /* ---- 비용 내역 · 구상 ---- */
 const COST_CATS=['선별','재작업','폐기','물류/운송','고객클레임','기타'];
@@ -585,7 +593,7 @@ function defaultDB(){return{
     dispositions:['반품','선별','재작업','특채','폐기'],
     owners:[],
     ncrRepeat:3,ncrQty:50,repeatWindow:90,requestDays:2,replyDays:7,verifyDays:21,backupDays:7,farDays:5,ntfDays:30,
-    laborRate:30000,gradeA:100,gradeB:500,gradeC:1000,photoMax:1600,photoQ:80,backupKeep:30,backupPhotos:1,company:'',dept:'',logo:'',ncrFormat:'NCR-{YY}{MM}-{SEQ3}',issuerPhone:'',issuerEmail:'',approver:'',signs:{},evalPass:80,evalCond:60,sevA:12,sevB:8,reply8D:7,replySimple:5,d3Days:1,escCount:2,ppmScar:1000,ppmScarMonths:3,impactMap:{'치수':3,'외관(스크래치)':1,'외관(찍힘/변형)':2,'이물':2,'녹/부식':2,'기능불량':3,'소음/NVH':3,'오삽/혼입':3,'누락/결품':3,'포장불량':1,'기타':2}
+    laborRate:30000,fx:{USD:1400,EUR:1610,CNY:195,JPY:9.3,MXN:75,INR:16.5,VND:0.055},fxDate:'',gradeA:100,gradeB:500,gradeC:1000,photoMax:1600,photoQ:80,backupKeep:30,backupPhotos:1,company:'',dept:'',logo:'',ncrFormat:'NCR-{YY}{MM}-{SEQ3}',issuerPhone:'',issuerEmail:'',approver:'',signs:{},evalPass:80,evalCond:60,sevA:12,sevB:8,reply8D:7,replySimple:5,d3Days:1,escCount:2,ppmScar:1000,ppmScarMonths:3,impactMap:{'치수':3,'외관(스크래치)':1,'외관(찍힘/변형)':2,'이물':2,'녹/부식':2,'기능불량':3,'소음/NVH':3,'오삽/혼입':3,'누락/결품':3,'포장불량':1,'기타':2}
   },
   suppliers:[],parts:[],defects:[],ncrs:[],receipts:[],reviews:[],cases:[],actions:[],deleted:[],bom:{updatedAt:'',rows:[]}
 }}
@@ -2090,7 +2098,7 @@ let curCosts=[],curClaim={},costCtx=null,curBase={};
 function costInit(d,inForm){curCosts=JSON.parse(JSON.stringify(d.costs||[]));curClaim=JSON.parse(JSON.stringify(d.claim||{}));curBase=JSON.parse(JSON.stringify(d.costBase||{}));costCtx=inForm?null:d;renderCostBox()}
 // 불량 발생수량 · 단가 (입력 안 했으면 불량 수량 · 부품 단가)
 function baseQty(){return curBase.qty!==undefined&&curBase.qty!==''?num(curBase.qty):num(cv('qty'))}
-function basePrice(){if(curBase.price!==undefined&&curBase.price!=='')return num(curBase.price);const pt=partByNo(String(cv('partNo')||'').trim());return pt?num(pt.price):0}
+function basePrice(){if(curBase.price!==undefined&&curBase.price!=='')return num(curBase.price);const pt=partByNo(String(cv('partNo')||'').trim());return pt?partKRW(pt):0}
 function baseOut(){const o={};['qty','price'].forEach(k=>{if(curBase[k]!==undefined&&curBase[k]!=='')o[k]=num(curBase[k])});return Object.keys(o).length?o:undefined}
 function setBase(k,v){curBase[k]=v;mfDirty=true;const e=$('#cbAmt');if(e)e.textContent=won(baseQty()*basePrice())}
 function rowCalc(i,el){const c=curCosts[i],q=num(c.qty),pr=num(c.price);if(q>0&&pr>0){const amt=Math.round(q*pr),auto=`${q.toLocaleString()}개 × ${won(pr)}원`;c.amt=amt;if(!(c.basis||'').trim()||c._autoB){c.basis=auto;c._autoB=true}const tr=el.closest('tr');tr.querySelector('[data-c=amt]').value=amt;tr.querySelector('[data-c=basis]').value=c.basis;costTot()}}
@@ -2114,7 +2122,7 @@ function renderCostBox(){
     <td><input value="${esc(c.memo)}" placeholder="메모·증빙" style="width:100%;min-width:100px" oninput="curCosts[${i}].memo=this.value;mfDirty=true"></td>
     <td><button type="button" class="b s d" onclick="delCost(${i})">✕</button></td></tr>`).join('');
   const c=curClaim||{};
-  const bq=baseQty(),bp=basePrice(),ptp=part?num(part.price):0;
+  const bq=baseQty(),bp=basePrice(),ptp=part?partKRW(part):0,ptCur=curOf(part);
   const defCat=disp==='재작업'?'재작업':disp==='선별'||disp==='선별 후 사용'?'선별':String(cv('source')||'').includes('고객')?'고객클레임':'폐기';
   b.innerHTML=`<div class="cbase" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2,rgba(0,0,0,.02));margin:4px 0 10px">
     <b style="font-size:13px">불량 발생수량</b><input id="cbQty" type="number" min="0" value="${esc(curBase.qty??(qty||''))}" placeholder="수량" style="width:90px;text-align:right" oninput="setBase('qty',this.value)"><span class="muted">개 ×</span>
@@ -2122,7 +2130,7 @@ function renderCostBox(){
     <b id="cbAmt">${won(bq*bp)}</b><span class="muted">원</span>
     <span style="flex:1"></span>
     <select id="cbCat" style="width:auto">${opts(COST_CATS,defCat)}</select><button type="button" class="b s p" onclick="addBaseCost()">비용 내역에 추가</button>
-    <div class="muted" style="flex-basis:100%;font-size:11.5px">${ptp?`부품 마스터 단가 ${won(ptp)}원`:'부품 마스터에 단가가 없습니다 — 직접 입력하세요'} · 불량 수량 ${qty?qty.toLocaleString()+'개':'미입력'} 기준 기본값이며, 바꾸면 이 불량에 따로 저장됩니다.</div>
+    <div class="muted" style="flex-basis:100%;font-size:11.5px">${ptp?(ptCur==='KRW'?`부품 마스터 단가 ${won(ptp)}원`:`부품 마스터 단가 ${fmtPrice(part)} × ${fxRate(ptCur).toLocaleString('ko-KR')}원 = ${won(ptp)}원`):part&&part.price&&ptCur!=='KRW'?`부품 단가 ${fmtPrice(part)} — ${ptCur} 환율이 설정에 없어 원화로 바꾸지 못했습니다`:'부품 마스터에 단가가 없습니다 — 직접 입력하세요'} · 불량 수량 ${qty?qty.toLocaleString()+'개':'미입력'} 기준 기본값이며, 바꾸면 이 불량에 따로 저장됩니다.</div>
   </div>
   <div style="font-size:12px;color:var(--sub);margin:4px 0">비용 내역 — 발생할 때마다 한 줄씩 추가합니다. COPQ는 <b>비용 발생일</b>이 속한 달로 집계됩니다.</div>
   <table class="ct"><thead><tr><th>비용 발생일</th><th>항목</th><th class="n">수량</th><th class="n">단가(원)</th><th class="n">금액(원)</th><th>산출 근거</th><th>메모</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="muted" style="text-align:center;padding:10px">아직 입력된 비용이 없습니다.</td></tr>'}</tbody>
@@ -2556,7 +2564,7 @@ function impCommit(){
     if(d.disposition&&!S.dispositions.includes(d.disposition))S.dispositions.push(d.disposition);
     if(d.source&&!S.sources.includes(d.source))S.sources.push(d.source);
     if(d.owner&&!S.owners.includes(d.owner))S.owners.push(d.owner);
-    if(auto){const p=partByNo(d.partNo);if(d.hours)d.costs.push({id:uid(),date:d.date,cat:d.disposition==='재작업'?'재작업':'선별',amt:Math.round(d.hours*S.laborRate),basis:`${d.hours}h × ${won(S.laborRate)}원`,memo:'엑셀 등록'});if(d.disposition==='폐기'&&p&&num(p.price))d.costs.push({id:uid(),date:d.date,cat:'폐기',amt:Math.round(d.qty*num(p.price)),basis:`${d.qty}개 × ${won(p.price)}원`,memo:'엑셀 등록'})}
+    if(auto){const p=partByNo(d.partNo);if(d.hours)d.costs.push({id:uid(),date:d.date,cat:d.disposition==='재작업'?'재작업':'선별',amt:Math.round(d.hours*S.laborRate),basis:`${d.hours}h × ${won(S.laborRate)}원`,memo:'엑셀 등록'});if(d.disposition==='폐기'&&p&&partKRW(p))d.costs.push({id:uid(),date:d.date,cat:'폐기',amt:Math.round(d.qty*partKRW(p)),basis:`${d.qty}개 × ${won(partKRW(p))}원${curOf(p)!=='KRW'?` (${fmtPrice(p)})`:''}`,memo:'엑셀 등록'})}
     db.defects.push(touch(d));ids.push(d.id);
   });
   ids.forEach(i=>{const d=db.defects.find(x=>x.id===i);if(ncrReasons(d).length)nRec++});
@@ -3475,7 +3483,7 @@ function msClick(t,k){const st=msState[t];if(st.k===k)st.d=-st.d;else{st.k=k;st.
 const sth=(t,k,label,cls='',tip='')=>{const st=msState[t],on=st.k===k;return `<th class="srt ${cls}${on?' on':''}" onclick="msClick('${t}','${k}')" title="${tip?esc(tip)+' · ':''}클릭해서 정렬">${label}<span class="ar">${on?(st.d>0?'▲':'▼'):'↕'}</span></th>`};
 const SQ_G={name:x=>x.s.name||'',items:x=>x.s.items||'',cnt:x=>x.cnt,nA:x=>x.nA,qty:x=>x.qty,rcv:x=>x.rcv||'',ppm:x=>x.ppm==null?'':x.ppm,grade:x=>x.grade==='-'?'':x.grade,ncr:x=>x.ncr,open:x=>x.open,late:x=>x.late,avgReply:x=>x.avgReply==null?'':x.avgReply,avgEval:x=>x.avgEval==null?'':x.avgEval,firstPass:x=>x.firstPass==null?'':x.firstPass,escN:x=>x.escN,pen:x=>x.pen,cost:x=>x.cost,rec:x=>x.rec,os:x=>x.os};
 const SUP_G={code:s=>s.code||'',name:s=>s.name||'',items:s=>s.items||'',nParts:s=>db.parts.filter(p=>p.supplierId===s.id).length,contact:s=>primaryOf(s)?.name||''};
-const PART_G={partNo:p=>p.partNo||'',name:p=>p.name||'',model:p=>p.model||'',sup:p=>supName(p.supplierId),price:p=>p.price===''||p.price==null?'':num(p.price)};
+const PART_G={partNo:p=>p.partNo||'',name:p=>p.name||'',model:p=>p.model||'',sup:p=>supName(p.supplierId),price:p=>p.price===''||p.price==null?'':partKRW(p)};
 function msSupTable(){
   const q=msState.sq.trim().toLowerCase();
   let L=db.suppliers.filter(s=>!q||[s.code,s.name,s.items,...ensureContacts(s).contacts.map(c=>c.name+' '+c.email+' '+c.phone+' '+c.mobile)].join(' ').toLowerCase().includes(q));
@@ -3488,8 +3496,8 @@ function msPartTable(){
   const q=msState.pq.trim().toLowerCase(),words=q.split(/\s+/).filter(Boolean);
   let L=db.parts.filter(p=>(!msState.psup||p.supplierId===msState.psup)&&(!msState.pmodel||p.model===msState.pmodel)&&(!words.length||words.every(w=>[p.partNo,p.name,p.model,supName(p.supplierId)].join(' ').toLowerCase().includes(w))));
   L=msSort(L,msState.part,PART_G);
-  return `<div class="muted" style="font-size:12px;margin-bottom:6px">${L.length}/${db.parts.length}개</div><div class="tw"><table class="mst"><colgroup><col style="width:170px"><col><col style="width:150px"><col style="width:190px"><col style="width:110px"><col style="width:110px"></colgroup><thead><tr>${sth('part','partNo','부품번호')}${sth('part','name','부품명')}${sth('part','model','차종')}${sth('part','sup','협력사')}${sth('part','price','단가(원)','n')}<th></th></tr></thead><tbody>
-  ${L.map(p=>`<tr><td style="white-space:nowrap"><b>${esc(p.partNo)}</b></td><td>${esc(p.name)}${p.safety&&p.safety!=='해당없음'?` <span class="bg bad">${esc(p.safety)}</span>`:''}</td><td>${esc(p.model)}</td><td>${esc(supName(p.supplierId))}</td><td class="n">${p.price?won(p.price):''}</td><td style="white-space:nowrap"><button class="b s" onclick="editPart('${p.id}')">수정</button> <button class="b s d" onclick="delPart('${p.id}')">삭제</button></td></tr>`).join('')||`<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">${db.parts.length?'조건에 맞는 부품이 없습니다.':'등록된 부품이 없습니다.'}</td></tr>`}
+  return `<div class="muted" style="font-size:12px;margin-bottom:6px">${L.length}/${db.parts.length}개</div><div class="tw"><table class="mst"><colgroup><col style="width:170px"><col><col style="width:150px"><col style="width:190px"><col style="width:110px"><col style="width:110px"></colgroup><thead><tr>${sth('part','partNo','부품번호')}${sth('part','name','부품명')}${sth('part','model','차종')}${sth('part','sup','협력사')}${sth('part','price','단가','n','원화 환산 기준으로 정렬')}<th></th></tr></thead><tbody>
+  ${L.map(p=>`<tr><td style="white-space:nowrap"><b>${esc(p.partNo)}</b></td><td>${esc(p.name)}${p.safety&&p.safety!=='해당없음'?` <span class="bg bad">${esc(p.safety)}</span>`:''}</td><td>${esc(p.model)}</td><td>${esc(supName(p.supplierId))}</td><td class="n">${fmtPrice(p)}${p.price&&curOf(p)!=='KRW'?`<br><span class="muted" style="font-size:11.5px">${fxRate(curOf(p))?'≈ '+won(partKRW(p))+'원':'환율 미설정'}</span>`:''}</td><td style="white-space:nowrap"><button class="b s" onclick="editPart('${p.id}')">수정</button> <button class="b s d" onclick="delPart('${p.id}')">삭제</button></td></tr>`).join('')||`<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">${db.parts.length?'조건에 맞는 부품이 없습니다.':'등록된 부품이 없습니다.'}</td></tr>`}
   </tbody></table></div>`;
 }
 function msRefreshSup(){const b=$('#msSup');if(b)b.innerHTML=msSupTable()}
@@ -3629,21 +3637,25 @@ async function delSup(id){
   ['defects','parts','ncrs'].forEach(c=>db[c].forEach(r=>{if(r.supplierId===id){r.supplierId='';touch(r)}}));
   removeRec('suppliers',id);save();render();offerUndo(snap,`협력사 '${s.name}'을(를) 삭제했습니다`);
 }
+function partFxHint(){const f=$('#mf'),e=$('#partFx');if(!f||!e)return;const c=f.currency.value,v=f.price.value;
+  e.textContent=c==='KRW'||v===''?'':fxRate(c)?`≈ ${won(num(v)*fxRate(c))}원 (1 ${c} = ${fxRate(c).toLocaleString('ko-KR')}원)`:`${c} 환율 미설정 — 설정에서 입력`}
 function editPart(id){
   const p=id?db.parts.find(x=>x.id===id):{};
   openModal(id?'부품 수정':'부품 추가',`<div class="fg">
     <label>부품번호 *<input name="partNo" value="${esc(p.partNo)}"></label><label>부품명<input name="name" value="${esc(p.name)}"></label>
     <label>차종<input name="model" value="${esc(p.model)}"></label><label>협력사<select name="supplierId">${supOpts(p.supplierId)}</select></label>
-    <label>단가 (원)<input type="number" min="0" step="any" name="price" value="${esc(p.price)}"></label>
+    <label>단가<span style="display:flex;gap:6px"><input type="number" min="0" step="any" name="price" value="${esc(p.price)}" style="flex:1" oninput="partFxHint()"><select name="currency" style="width:auto" onchange="partFxHint()">${CURS.map(c=>`<option value="${c}" ${curOf(p)===c?'selected':''}>${c}</option>`).join('')}</select></span><span id="partFx" class="muted" style="font-size:11.5px;font-weight:normal"></span></label>
     <label>안전특성 (RCA 화면에 표시)<select name="safety">${czOptHTML(CZ_OPT.SafetyChar,p.safety||'해당없음')}</select></label></div>`,
   [{label:'취소',fn:closeModal},{label:'저장',cls:'p',fn:()=>{const o=gather();if(!o.partNo){toast('부품번호를 입력하세요');return}
+    if(o.currency!=='KRW'&&o.price!==''&&!fxRate(o.currency))setTimeout(()=>toast(`${o.currency} 환율이 설정에 없습니다 — 설정 → 불량 관리 → 환율에서 넣으면 비용이 원화로 계산됩니다`),900);
     if(db.parts.some(x=>x.partNo===o.partNo&&x.id!==id)){toast('같은 부품번호가 이미 있습니다');return}
-    o.price=o.price===''?'':num(o.price);let r;if(id){r=db.parts.find(x=>x.id===id);Object.assign(r,o)}else{r={id:uid(),...o};db.parts.push(r)}touch(r);save();closeModal(true);render()}}]);
+    o.price=o.price===''?'':num(o.price);if(o.currency==='KRW')delete o.currency;let r;if(id){r=db.parts.find(x=>x.id===id);delete r.currency;Object.assign(r,o)}else{r={id:uid(),...o};db.parts.push(r)}touch(r);save();closeModal(true);render()}}]);
+  partFxHint();
 }
 async function delPart(id){
   const p=db.parts.find(x=>x.id===id);if(!p)return;
   const nd=db.defects.filter(d=>d.partNo===p.partNo).length;
-  if(!await askConfirm({title:'부품을 삭제할까요?',items:[`${qi(p.partNo)} ${esc(p.name)}`,`${esc(p.model)} · ${esc(supName(p.supplierId))}${p.price?` · ${won(p.price)}원`:''}`],note:nd?`이 부품번호의 불량 기록 ${nd}건은 그대로 유지됩니다. 삭제 후 10초 안에 되돌릴 수 있습니다.`:'삭제 후 10초 안에 되돌릴 수 있습니다.'}))return;
+  if(!await askConfirm({title:'부품을 삭제할까요?',items:[`${qi(p.partNo)} ${esc(p.name)}`,`${esc(p.model)} · ${esc(supName(p.supplierId))}${p.price?` · ${fmtPrice(p)}`:''}`],note:nd?`이 부품번호의 불량 기록 ${nd}건은 그대로 유지됩니다. 삭제 후 10초 안에 되돌릴 수 있습니다.`:'삭제 후 10초 안에 되돌릴 수 있습니다.'}))return;
   const snap=await takeSnap();removeRec('parts',id);save();render();offerUndo(snap,`부품 ${p.partNo}을(를) 삭제했습니다`);
 }
 function importContact(s,name,phone,email){
@@ -3669,11 +3681,11 @@ const MIMP={
       ['code',c=>/코드|code|업체번호|거래처번호|vendorno|사업자/.test(c)],['contact',c=>/담당|성명|이름|contact|^name$/.test(c)],
       ['name',c=>/협력사|업체|거래처|공급사|vendor|supplier|회사|상호/.test(c)],['items',c=>/품목|item|취급|주요/.test(c)]],
     help:'필수 열: <b>협력사명</b> / 선택 열: 코드 · 주요 품목 · 담당자 · 연락처 · 이메일. 같은 협력사명(또는 같은 코드)이 있으면 그 협력사를 갱신하고, 담당자가 바뀌면 연락처 이력에 남깁니다.'},
-  part:{title:'부품 업로드',key:'partNo',F:[['partNo','부품번호',1],['name','부품명'],['model','차종'],['sup','협력사 (이름 또는 코드)'],['price','단가'],['safety','안전특성 (S · R · C)'],['proc','조달구분 (구매 · 생산)']],
-    tests:[['proc',c=>/조달|구매구분|procure|makebuy|자작/.test(c)],['price',c=>/단가|price|cost|가격/.test(c)],['safety',c=>/특별특성|안전특성|특성|safety|cc\/sc|중요/.test(c)],
+  part:{title:'부품 업로드',key:'partNo',F:[['partNo','부품번호',1],['name','부품명'],['model','차종'],['sup','협력사 (이름 또는 코드)'],['price','단가'],['cur','통화 (KRW · USD · EUR …)'],['safety','안전특성 (S · R · C)'],['proc','조달구분 (구매 · 생산)']],
+    tests:[['proc',c=>/조달|구매구분|procure|makebuy|자작/.test(c)],['cur',c=>/통화|화폐|currency|^curr?$|^cur\.?$/.test(c)],['price',c=>/단가|price|cost|가격/.test(c)],['safety',c=>/특별특성|안전특성|특성|safety|cc\/sc|중요/.test(c)],
       ['model',c=>/차종|model|vehicle|car|프로젝트|project/.test(c)],['sup',c=>/협력사|업체|거래처|공급사|vendor|supplier|maker|제조사/.test(c)],
       ['name',c=>/품명|부품명|품목명|자재명|description|partname|itemname|^name$/.test(c)],['partNo',c=>/품번|부품번호|품목코드|자재코드|partno|itemcode|^code$|^part$/.test(c)]],
-    help:'필수 열: <b>부품번호</b> / 선택 열: 부품명 · 차종 · 협력사 · 단가 · 안전특성 · 조달구분. 같은 부품번호가 있으면 갱신합니다. 협력사가 기준정보에 없으면 새로 만듭니다. MES · ERP의 품목 목록이나 BOM 엑셀을 그대로 올려도 됩니다.'}};
+    help:'필수 열: <b>부품번호</b> / 선택 열: 부품명 · 차종 · 협력사 · 단가 · 통화 · 안전특성 · 조달구분. 통화 열이 없어도 단가에 <b>USD 12.5</b> · <b>$12.5</b> · <b>€8</b> · <b>35元</b>처럼 적혀 있으면 통화를 알아봅니다 (없으면 원화). 같은 부품번호가 있으면 갱신합니다. 협력사가 기준정보에 없으면 새로 만듭니다. MES · ERP의 품목 목록이나 BOM 엑셀을 그대로 올려도 됩니다.'}};
 let mi={kind:'sup',rows:[],hdr:0,map:{},name:'',buyOnly:true};
 function miAutoMap(kind,h){
   const m={},used=new Set(),cell=i=>String(h[i]||'').replace(/\s+/g,'').toLowerCase();
@@ -3707,6 +3719,13 @@ function miSet(rows,name){
 }
 const miSafety=v=>{v=String(v||'').trim();if(!v)return '';if(CZ_OPT.SafetyChar.includes(v))return v;const u=v.toUpperCase();
   if(/안전|^S$|^SC$|^S\W/.test(u))return '안전-S';if(/법규|^R$|^R\W/.test(u))return '법규-R';if(/중요|^C$|^CC$|^C\W/.test(u))return '중요-C';if(/없음|^-$|^N/.test(u))return '해당없음';return ''};
+// 단가 · 통화 읽기: 통화 열 > 단가에 붙은 기호 · 코드 > 원화
+function miCur(t){t=String(t||'').toUpperCase();
+  if(/USD|US\$|\$|달러|DOLLAR/.test(t))return 'USD';if(/EUR|€|유로/.test(t))return 'EUR';if(/CNY|RMB|元|위안|人民币/.test(t))return 'CNY';
+  if(/JPY|円|엔/.test(t))return 'JPY';if(/MXN|페소|PESO/.test(t))return 'MXN';if(/INR|₹|루피/.test(t))return 'INR';if(/VND|₫|동$/.test(t))return 'VND';
+  if(/KRW|₩|원/.test(t))return 'KRW';return ''}
+function miPrice(v,curCol){const raw=String(v||'').trim(),cc=String(curCol||'').trim(),c=cc?miCur(cc):(miCur(raw)||'KRW');
+  const n=raw.replace(/[^0-9.\-]/g,'');return {v:n!==''&&isFinite(+n)?+n:'',c:c||'?',bad:cc&&!c?cc:''}}  // bad: 알 수 없는 통화
 const supFind=v=>{v=String(v||'').trim();if(!v)return null;const l=v.toLowerCase();return db.suppliers.find(s=>(s.name||'').toLowerCase()===l)||db.suppliers.find(s=>s.code&&String(s.code).toLowerCase()===l)||null};
 // 읽은 줄 → 등록 대상 (상태: 신규 · 갱신 · 건너뜀)
 function miData(){
@@ -3735,11 +3754,13 @@ function miRender(){
   const okMap=mi.map[C.key]!=null;
   const newSup=mi.kind==='part'?[...new Set(L.map(x=>x.sup).filter(v=>v&&!supFind(v)))]:[];
   const cols=C.F.filter(([f])=>mi.map[f]!=null);
+  const noFx=mi.kind==='part'?[...new Set(L.map(x=>miPrice(x.price,x.cur)).filter(x=>!x.bad&&x.v!==''&&x.c!=='KRW'&&!fxRate(x.c)).map(x=>x.c))]:[];
+  const badCur=mi.kind==='part'?[...new Set(L.map(x=>miPrice(x.price,x.cur).bad).filter(Boolean))]:[];
   $('#miMap').innerHTML=`<div class="sec">열 연결 확인 <span class="muted" style="font-weight:normal;font-size:12px">${esc(mi.name)} · 제목행 ${mi.hdr+1}번째 줄 · 틀린 열만 바꿔주세요</span></div>
   <div class="fg">${C.F.map(([f,l,req])=>`<label>${l}${req?' *':''}<select onchange="if(this.value==='')delete mi.map.${f};else mi.map.${f}=+this.value;miRender()"><option value="">(없음)</option>${h.map((c,i)=>`<option value="${i}" ${mi.map[f]===i?'selected':''}>${esc(c||('열 '+(i+1)))}</option>`).join('')}</select></label>`).join('')}
    ${mi.kind==='part'&&mi.map.proc!=null?`<label class="full row" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" ${mi.buyOnly?'checked':''} onchange="mi.buyOnly=this.checked;miRender()"> 조달구분이 <b>구매</b>인 품목만 등록 (생산 · 반제품 · 완제품은 건너뜀)</label>`:''}</div>
-  <div class="${okMap&&L.length?'help':'banner'}" style="margin-top:8px">${!okMap?`<b>${C.F.find(f=>f[0]===C.key)[1]}</b> 열을 골라주세요.`:L.length?`<b>${L.length}</b>건을 읽었습니다 — 신규 <b>${n}</b> · 갱신 <b>${u}</b>${skip.make?` · 생산품 ${skip.make}줄 건너뜀`:''}${skip.nokey?` · ${C.F.find(f=>f[0]===C.key)[1]} 없는 ${skip.nokey}줄 건너뜀`:''}. 빈 칸은 기존 값을 그대로 둡니다.${newSup.length?`<br>기준정보에 없는 협력사 ${newSup.length}곳(${newSup.slice(0,5).map(esc).join(', ')}${newSup.length>5?' …':''})은 새로 등록합니다.`:''}`:'읽은 줄이 없습니다. 열 연결을 확인하세요.'}</div>
-  ${L.length?`<div class="tw" style="max-height:240px;margin-top:6px"><table class="sm"><thead><tr><th>상태</th>${cols.map(([,l])=>`<th>${esc(l.replace(/ \(.*\)/,''))}</th>`).join('')}</tr></thead><tbody>${L.slice(0,12).map(x=>`<tr><td><span class="bg ${x.st==='신규'?'ok':'inf'}">${x.st}</span></td>${cols.map(([f])=>`<td>${esc(f==='safety'?(miSafety(x[f])||x[f]):x[f])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${L.length>12?`<div class="muted" style="font-size:12px;margin-top:4px">${L.length}건 중 12건 미리보기</div>`:''}`:''}`;
+  <div class="${okMap&&L.length?'help':'banner'}" style="margin-top:8px">${!okMap?`<b>${C.F.find(f=>f[0]===C.key)[1]}</b> 열을 골라주세요.`:L.length?`<b>${L.length}</b>건을 읽었습니다 — 신규 <b>${n}</b> · 갱신 <b>${u}</b>${skip.make?` · 생산품 ${skip.make}줄 건너뜀`:''}${skip.nokey?` · ${C.F.find(f=>f[0]===C.key)[1]} 없는 ${skip.nokey}줄 건너뜀`:''}. 빈 칸은 기존 값을 그대로 둡니다.${newSup.length?`<br>기준정보에 없는 협력사 ${newSup.length}곳(${newSup.slice(0,5).map(esc).join(', ')}${newSup.length>5?' …':''})은 새로 등록합니다.`:''}${badCur.length?`<br>⚠ 쓸 수 없는 통화 ${badCur.map(esc).join(', ')} — 이 줄들은 단가를 넣지 않습니다 (쓸 수 있는 통화: ${CURS.join(' · ')}).`:''}${noFx.length?`<br>⚠ ${noFx.join(', ')} 환율이 설정에 없습니다 — 단가는 그대로 저장되고, 설정 → 불량 관리 → 환율을 넣으면 비용이 원화로 계산됩니다.`:''}`:'읽은 줄이 없습니다. 열 연결을 확인하세요.'}</div>
+  ${L.length?`<div class="tw" style="max-height:240px;margin-top:6px"><table class="sm"><thead><tr><th>상태</th>${cols.map(([,l])=>`<th>${esc(l.replace(/ \(.*\)/,''))}</th>`).join('')}</tr></thead><tbody>${L.slice(0,12).map(x=>`<tr><td><span class="bg ${x.st==='신규'?'ok':'inf'}">${x.st}</span></td>${cols.map(([f])=>`<td>${esc(f==='safety'?(miSafety(x[f])||x[f]):f==='price'?(x.price?(miPrice(x.price,x.cur).bad?esc(x.price)+' (통화 확인)':fmtAmt(miPrice(x.price,x.cur).v,miPrice(x.price,x.cur).c)):''):f==='cur'?(miCur(x.cur)||x.cur):x[f])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${L.length>12?`<div class="muted" style="font-size:12px;margin-top:4px">${L.length}건 중 12건 미리보기</div>`:''}`:''}`;
 }
 function miApply(){
   const C=MIMP[mi.kind],{L}=miData();
@@ -3757,7 +3778,8 @@ function miApply(){
       if(o.name)p.name=o.name;else if(p.name==null)p.name='';
       if(o.model)p.model=o.model;else if(p.model==null)p.model='';
       if(sid)p.supplierId=sid;else if(p.supplierId==null)p.supplierId='';
-      const pr=String(o.price||'').replace(/[,원\s]/g,'');if(pr!==''&&isFinite(+pr))p.price=+pr;else if(p.price==null)p.price='';
+      const pc=miPrice(o.price,o.cur);if(pc.bad){if(p.price==null)p.price=''}else if(pc.v!==''){p.price=pc.v;if(pc.c==='KRW')delete p.currency;else p.currency=pc.c}else if(p.price==null)p.price='';
+      if(!pc.bad&&pc.v===''&&o.cur){if(pc.c==='KRW')delete p.currency;else p.currency=pc.c}
       const sf=miSafety(o.safety);if(sf)p.safety=sf;
       touch(p);
     }
@@ -3887,6 +3909,8 @@ const sg=(h,rows)=>`${h?`<div class="sgh">${h}</div>`:''}<div class="sgrp">${row
 const sNum=(k,unit,min,max)=>`<input type="number" class="snum" value="${esc(db.settings[k])}" ${min!=null?`min="${min}"`:''} ${max!=null?`max="${max}"`:''} onchange="setS('${k}',this.value,'num',this)">${unit?`<span class="muted">${unit}</span>`:''}`;
 const sTxt=(k,ph)=>`<input class="stxt" value="${esc(db.settings[k])}" placeholder="${esc(ph||'')}" onchange="setS('${k}',this.value,'str')">`;
 const sList=(k,ph)=>`<textarea class="slist" placeholder="${esc(ph||'')}" onchange="setS('${k}',this.value,'list')">${esc((db.settings[k]||[]).join('\n'))}</textarea>`;
+function setFx(c,v){const S=db.settings;S.fx={...(S.fx||{})};if(String(v).trim()===''){delete S.fx[c]}else{if(!isFinite(+v)||+v<0){toast('숫자를 입력하세요');setTimeout(render,0);return}S.fx[c]=+v}
+  if(!S.fxDate)S.fxDate=today();save();const e=$('#setSaved');if(e){e.textContent='저장됨';e.style.opacity=1;setTimeout(()=>e.style.opacity=0,1600)}}
 function setS(k,v,type,el){
   const S=db.settings;lockSev();
   if(type==='num'){
@@ -3932,7 +3956,10 @@ function renderData(){
     sv('처리 방법','반품·선별·재작업·특채·폐기 등. ‘폐기’는 비용 자동계산에서 수량×단가로 계산됩니다.',sList('dispositions'),1))+
     sg('비용 · 사진',sv('시간당 인건비','작업시간 × 인건비로 선별비·재작업비를 자동 계산합니다.',sNum('laborRate','원',0))+
       sv('사진 최대 크기','첨부 사진의 긴 변을 이 크기로 줄여서 저장합니다.',sNum('photoMax','px',400,4000))+
-      sv('사진 압축 품질','낮을수록 용량이 작아집니다. 70~85 권장.',sNum('photoQ','%',30,95)));
+      sv('사진 압축 품질','낮을수록 용량이 작아집니다. 70~85 권장.',sNum('photoQ','%',30,95)))+
+    sg('환율 (부품 단가 → 원화)',sv('사용 방법',`해외 부품은 단가를 <b>협력사 통화 그대로</b> 저장하고, 비용 · 구상 · COPQ에서는 아래 환율로 <b>원화로 바꿔</b> 계산합니다. 이미 입력한 비용은 그때 금액 그대로이고, 새로 넣는 비용부터 바뀐 환율이 쓰입니다.${db.settings.fxDate?`<br>환율 기준일: <b>${esc(db.settings.fxDate)}</b>`:'<br><b style="color:var(--warn)">기본값은 예시입니다 — 회사 기준 환율로 바꿔 주세요.</b>'}`,'',1)+
+      CURS.filter(c=>c!=='KRW').map(c=>sv(`1 ${c}`,CUR_L[c],`<input type="number" class="snum" min="0" step="any" value="${esc((db.settings.fx||{})[c]??'')}" onchange="setFx('${c}',this.value)"><span class="muted">원</span>`)).join('')+
+      sv('환율 기준일','회사 기준 환율을 적용한 날짜 (기록용)',`<input type="date" class="stxt" value="${esc(db.settings.fxDate||'')}" onchange="setS('fxDate',this.value,'str')">`));
   P.sev=()=>sg('판정 기준',
     sv('A등급 기준 → 8D 보고서','영향도·유출 단계·발생 범위·반복성 합계(4~16점)가 이 점수 이상이면 A입니다.',sNum('sevA','점 이상',4,16))+
     sv('B등급 기준 → 간이 대책서','이 점수 이상이고 A 기준 미만이면 B, 그 미만은 C(단순 통보)입니다.',sNum('sevB','점 이상',4,16))+
