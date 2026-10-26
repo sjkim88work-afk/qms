@@ -3498,10 +3498,10 @@ function renderMaster(){
   const models=[...new Set(db.parts.map(p=>p.model).filter(Boolean))].sort(kcmp);
   if(msState.psup&&!supById(msState.psup))msState.psup='';
   return `<div>
-  <div class="card"><h3>협력사 (${db.suppliers.length})<span class="sp"></span><button class="b s" onclick="exportContactsCSV()">연락망 CSV</button><button class="b s" onclick="pasteImport('sup')">엑셀 붙여넣기</button><button class="b s p" onclick="editSup()">+ 추가</button></h3>
+  <div class="card"><h3>협력사 (${db.suppliers.length})<span class="sp"></span><button class="b s" onclick="exportContactsCSV()">연락망 CSV</button><button class="b s" onclick="openMasterImport('sup')">엑셀 업로드</button><button class="b s p" onclick="editSup()">+ 추가</button></h3>
   <div class="row" style="margin-bottom:8px"><input placeholder="검색 (코드·협력사명·품목·담당자)" value="${esc(msState.sq)}" oninput="msState.sq=this.value;msRefreshSup()" style="flex:1;min-width:180px"></div>
   <div id="msSup">${msSupTable()}</div></div>
-  <div class="card"><h3>부품 (${db.parts.length})<span class="sp"></span><button class="b s" onclick="pasteImport('part')">엑셀 붙여넣기</button><button class="b s p" onclick="editPart()">+ 추가</button></h3>
+  <div class="card"><h3>부품 (${db.parts.length})<span class="sp"></span><button class="b s" onclick="openMasterImport('part')">엑셀 업로드</button><button class="b s p" onclick="editPart()">+ 추가</button></h3>
   <div class="row" style="margin-bottom:8px"><input placeholder="검색 (번호·품명·차종·협력사)" value="${esc(msState.pq)}" oninput="msState.pq=this.value;msRefreshPart()" style="flex:1;min-width:160px">
     <select onchange="msState.psup=this.value;msRefreshPart()">${supOpts(msState.psup,'전체 협력사')}</select>
     <select onchange="msState.pmodel=this.value;msRefreshPart()"><option value="">전체 차종</option>${models.map(m=>`<option ${m===msState.pmodel?'selected':''}>${esc(m)}</option>`).join('')}</select>
@@ -3662,28 +3662,109 @@ function importContact(s,name,phone,email){
   s.contacts.forEach(c=>c.primary=false);s.contacts.push(nc);
 }
 function parseRows(t){return parseCSV(String(t||'')).map(r=>r.map(c=>String(c??'').trim())).filter(r=>r.some(c=>c))}
-const HEAD_WORDS=['코드','협력사코드','협력사','협력사명','업체명','품목','담당자','연락처','전화','이메일','email','부품번호','품번','부품명','품명','차종','단가','name','code'];
-const isHeadRow=r=>r.filter(c=>HEAD_WORDS.includes(String(c).replace(/\s/g,'').toLowerCase())).length>=2;
-function pasteImport(kind){
-  const cols=kind==='sup'?'코드 | 협력사명 | 품목 | 담당자 | 연락처 | 이메일':'부품번호 | 부품명 | 차종 | 협력사명 | 단가';
-  openModal(kind==='sup'?'협력사 일괄 등록':'부품 일괄 등록',`<div class="help">엑셀에서 아래 열 순서대로 범위를 복사(Ctrl+C)한 뒤 붙여넣으세요(Ctrl+V). 첫 줄이 제목행이면 자동으로 건너뜁니다.<br><b>${cols}</b><br>${kind==='sup'?'같은 협력사명이 있으면 정보를 갱신합니다.':'같은 부품번호가 있으면 갱신하고, 없는 협력사명은 자동으로 협력사에 추가합니다.'}</div>
-  <textarea name="txt" style="min-height:260px;margin-top:8px;font-family:Consolas,monospace;font-size:12px"></textarea>`,
-  [{label:'취소',fn:closeModal},{label:'등록',cls:'p',fn:()=>{
-    let rows=parseRows(gather().txt);if(!rows.length){toast('붙여넣은 내용이 없습니다');return}
-    if(isHeadRow(rows[0]))rows=rows.slice(1);
-    let a=0,u=0;const snap={db:JSON.stringify(db),ph:[]};
-    rows.forEach(r=>{
-      if(kind==='sup'){const [code,name,items,contact,phone,email]=r;if(!name)return;let s=db.suppliers.find(x=>x.name===name);
-        if(s)u++;else{s={id:uid(),name,contacts:[],contactLog:[]};db.suppliers.push(s);a++}ensureContacts(s);
-        Object.assign(s,{code:code||s.code||'',items:items||s.items||''});
-        if(contact&&contact.trim())importContact(s,contact.trim(),phone||'',email||'');
-        syncLegacy(s);touch(s)}
-      else{const [partNo,name,model,sn,price]=r;if(!partNo)return;let sid='';
-        if(sn){let s=db.suppliers.find(x=>x.name===sn);if(!s){s=touch({id:uid(),code:'',name:sn,items:'',contact:'',phone:'',email:''});db.suppliers.push(s)}sid=s.id}
-        let p=db.parts.find(x=>x.partNo===partNo);if(p)u++;else{p={id:uid(),partNo};db.parts.push(p);a++}
-        Object.assign(p,{name:name||p.name||'',model:model||p.model||'',supplierId:sid||p.supplierId||'',price:price?num(String(price).replace(/,/g,'')):(p.price||'')});touch(p)}
-    });
-    save();closeModal(true);render();toast(`신규 ${a}건, 갱신 ${u}건`);if(a||u)offerUndo(snap,`일괄 등록: 신규 ${a}건 · 갱신 ${u}건`);}}]);
+/* ---- 협력사 · 부품 업로드 (BOM 업로드와 같은 방식: xlsx · csv · 붙여넣기 → 열 자동 연결 → 미리보기 → 등록) ---- */
+const MIMP={
+  sup:{title:'협력사 업로드',key:'name',F:[['code','협력사 코드'],['name','협력사명',1],['items','주요 품목'],['contact','담당자'],['phone','연락처(전화)'],['email','이메일']],
+    tests:[['email',c=>/메일|mail/.test(c)],['phone',c=>/연락처|전화|휴대|핸드폰|phone|tel|mobile/.test(c)],
+      ['code',c=>/코드|code|업체번호|거래처번호|vendorno|사업자/.test(c)],['contact',c=>/담당|성명|이름|contact|^name$/.test(c)],
+      ['name',c=>/협력사|업체|거래처|공급사|vendor|supplier|회사|상호/.test(c)],['items',c=>/품목|item|취급|주요/.test(c)]],
+    help:'필수 열: <b>협력사명</b> / 선택 열: 코드 · 주요 품목 · 담당자 · 연락처 · 이메일. 같은 협력사명(또는 같은 코드)이 있으면 그 협력사를 갱신하고, 담당자가 바뀌면 연락처 이력에 남깁니다.'},
+  part:{title:'부품 업로드',key:'partNo',F:[['partNo','부품번호',1],['name','부품명'],['model','차종'],['sup','협력사 (이름 또는 코드)'],['price','단가'],['safety','안전특성 (S · R · C)'],['proc','조달구분 (구매 · 생산)']],
+    tests:[['proc',c=>/조달|구매구분|procure|makebuy|자작/.test(c)],['price',c=>/단가|price|cost|가격/.test(c)],['safety',c=>/특별특성|안전특성|특성|safety|cc\/sc|중요/.test(c)],
+      ['model',c=>/차종|model|vehicle|car|프로젝트|project/.test(c)],['sup',c=>/협력사|업체|거래처|공급사|vendor|supplier|maker|제조사/.test(c)],
+      ['name',c=>/품명|부품명|품목명|자재명|description|partname|itemname|^name$/.test(c)],['partNo',c=>/품번|부품번호|품목코드|자재코드|partno|itemcode|^code$|^part$/.test(c)]],
+    help:'필수 열: <b>부품번호</b> / 선택 열: 부품명 · 차종 · 협력사 · 단가 · 안전특성 · 조달구분. 같은 부품번호가 있으면 갱신합니다. 협력사가 기준정보에 없으면 새로 만듭니다. MES · ERP의 품목 목록이나 BOM 엑셀을 그대로 올려도 됩니다.'}};
+let mi={kind:'sup',rows:[],hdr:0,map:{},name:'',buyOnly:true};
+function miAutoMap(kind,h){
+  const m={},used=new Set(),cell=i=>String(h[i]||'').replace(/\s+/g,'').toLowerCase();
+  MIMP[kind].tests.forEach(([k,t])=>{for(let i=0;i<h.length;i++){if(used.has(i))continue;if(t(cell(i))){m[k]=i;used.add(i);break}}});
+  return m;
+}
+function openMasterImport(kind){
+  const C=MIMP[kind];mi={kind,rows:[],hdr:0,map:{},name:'',buyOnly:true};
+  openModal(C.title,`<div class="help">엑셀(.xlsx) · CSV 파일을 올리거나, 엑셀에서 범위를 복사해 붙여넣으세요. 제목행과 열은 자동으로 찾고, 틀린 열만 바꾸면 됩니다.<br>${C.help}</div>
+  <div class="row" style="margin-top:10px"><label class="b p" style="cursor:pointer">파일 선택 (.xlsx / .csv)<input type="file" accept=".xlsx,.csv,.txt" style="display:none" onchange="miFile(this.files[0]);this.value=''"></label><span id="miSheet"></span><span id="miName" class="muted"></span>
+    <span style="flex:1"></span><a class="lk" style="font-size:12px" onclick="miTemplate()">빈 양식 받기 (CSV)</a></div>
+  <textarea id="miPaste" placeholder="또는 엑셀에서 복사한 범위를 여기에 붙여넣기 (Ctrl+V) — 제목행 포함" style="min-height:80px;margin-top:8px;font-family:Consolas,monospace;font-size:12px" oninput="miSet(parseRows(this.value),'붙여넣기')"></textarea>
+  <div id="miMap" style="margin-top:10px"></div>`,
+  [{label:'취소',fn:closeModal},{label:'등록',cls:'p',fn:miApply}]);
+}
+function miTemplate(){const C=MIMP[mi.kind];downloadCSV(`${mi.kind==='sup'?'협력사':'부품'}_업로드양식.csv`,[C.F.map(f=>f[1].replace(/ \(.*\)/,''))])}
+async function miFile(f){
+  if(!f)return;
+  try{const buf=await f.arrayBuffer();
+    if(/\.xlsx$/i.test(f.name)){const sh=await readXlsx(buf),names=Object.keys(sh);if(!names.length)throw new Error('읽을 수 있는 시트가 없습니다');mi.sheets=sh;const cur=names.find(n=>sh[n].length>1)||names[0];
+      $('#miSheet').innerHTML=names.length>1?`시트 <select onchange="miSet(mi.sheets[this.value],${jsq(f.name)})">${names.map(n=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('')}</select>`:'';miSet(sh[cur],f.name)}
+    else if(/\.xls$/i.test(f.name))throw new Error('구버전 .xls는 엑셀에서 .xlsx로 저장 후 선택하세요');
+    else miSet(parseCSV(decodeText(buf)),f.name);
+  }catch(e){toast('파일 읽기 실패: '+e.message)}
+}
+function miSet(rows,name){
+  rows=(rows||[]).map(r=>(r||[]).map(c=>String(c??'').trim()));
+  if(rows.filter(r=>r.some(c=>c)).length<2){$('#miMap').innerHTML='<div class="muted">제목행과 데이터가 있는 범위를 넣어주세요.</div>';return}
+  let best=-1,bh=0;rows.slice(0,15).forEach((r,i)=>{const c=Object.keys(miAutoMap(mi.kind,r)).length;if(c>best){best=c;bh=i}});
+  mi.rows=rows;mi.hdr=bh;mi.map=miAutoMap(mi.kind,rows[bh]);mi.name=name;miRender();
+}
+const miSafety=v=>{v=String(v||'').trim();if(!v)return '';if(CZ_OPT.SafetyChar.includes(v))return v;const u=v.toUpperCase();
+  if(/안전|^S$|^SC$|^S\W/.test(u))return '안전-S';if(/법규|^R$|^R\W/.test(u))return '법규-R';if(/중요|^C$|^CC$|^C\W/.test(u))return '중요-C';if(/없음|^-$|^N/.test(u))return '해당없음';return ''};
+const supFind=v=>{v=String(v||'').trim();if(!v)return null;const l=v.toLowerCase();return db.suppliers.find(s=>(s.name||'').toLowerCase()===l)||db.suppliers.find(s=>s.code&&String(s.code).toLowerCase()===l)||null};
+// 읽은 줄 → 등록 대상 (상태: 신규 · 갱신 · 건너뜀)
+function miData(){
+  const m=mi.map,k=mi.kind,g=(r,f)=>m[f]!=null&&m[f]>=0?String(r[m[f]]??'').trim():'';
+  const out=new Map(),skip={nokey:0,make:0};
+  mi.rows.slice(mi.hdr+1).forEach(r=>{
+    if(!r.some(c=>c))return;
+    const o={};MIMP[k].F.forEach(([f])=>o[f]=g(r,f));
+    if(k==='sup'){
+      if(!o.name){skip.nokey++;return}
+      const ex=db.suppliers.find(s=>s.name===o.name)||(o.code&&db.suppliers.find(s=>s.code&&s.code===o.code));
+      out.set(o.name,{...o,st:ex?'갱신':'신규',ex});
+    }else{
+      if(!o.partNo){skip.nokey++;return}
+      if(mi.buyOnly&&m.proc!=null&&o.proc&&!/구매|외주|buy|purchase|^p$/i.test(o.proc)){skip.make++;return}
+      const ex=partByNo(o.partNo),prev=out.get(o.partNo);
+      // BOM처럼 같은 부품번호가 여러 줄이면 빈 칸을 다른 줄 값으로 채움
+      if(prev){MIMP.part.F.forEach(([f])=>{if(!prev[f]&&o[f])prev[f]=o[f]});return}
+      out.set(o.partNo,{...o,st:ex?'갱신':'신규',ex});
+    }
+  });
+  return {L:[...out.values()],skip};
+}
+function miRender(){
+  const C=MIMP[mi.kind],h=mi.rows[mi.hdr]||[],{L,skip}=miData(),n=L.filter(x=>x.st==='신규').length,u=L.length-n;
+  const okMap=mi.map[C.key]!=null;
+  const newSup=mi.kind==='part'?[...new Set(L.map(x=>x.sup).filter(v=>v&&!supFind(v)))]:[];
+  const cols=C.F.filter(([f])=>mi.map[f]!=null);
+  $('#miMap').innerHTML=`<div class="sec">열 연결 확인 <span class="muted" style="font-weight:normal;font-size:12px">${esc(mi.name)} · 제목행 ${mi.hdr+1}번째 줄 · 틀린 열만 바꿔주세요</span></div>
+  <div class="fg">${C.F.map(([f,l,req])=>`<label>${l}${req?' *':''}<select onchange="if(this.value==='')delete mi.map.${f};else mi.map.${f}=+this.value;miRender()"><option value="">(없음)</option>${h.map((c,i)=>`<option value="${i}" ${mi.map[f]===i?'selected':''}>${esc(c||('열 '+(i+1)))}</option>`).join('')}</select></label>`).join('')}
+   ${mi.kind==='part'&&mi.map.proc!=null?`<label class="full row" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" ${mi.buyOnly?'checked':''} onchange="mi.buyOnly=this.checked;miRender()"> 조달구분이 <b>구매</b>인 품목만 등록 (생산 · 반제품 · 완제품은 건너뜀)</label>`:''}</div>
+  <div class="${okMap&&L.length?'help':'banner'}" style="margin-top:8px">${!okMap?`<b>${C.F.find(f=>f[0]===C.key)[1]}</b> 열을 골라주세요.`:L.length?`<b>${L.length}</b>건을 읽었습니다 — 신규 <b>${n}</b> · 갱신 <b>${u}</b>${skip.make?` · 생산품 ${skip.make}줄 건너뜀`:''}${skip.nokey?` · ${C.F.find(f=>f[0]===C.key)[1]} 없는 ${skip.nokey}줄 건너뜀`:''}. 빈 칸은 기존 값을 그대로 둡니다.${newSup.length?`<br>기준정보에 없는 협력사 ${newSup.length}곳(${newSup.slice(0,5).map(esc).join(', ')}${newSup.length>5?' …':''})은 새로 등록합니다.`:''}`:'읽은 줄이 없습니다. 열 연결을 확인하세요.'}</div>
+  ${L.length?`<div class="tw" style="max-height:240px;margin-top:6px"><table class="sm"><thead><tr><th>상태</th>${cols.map(([,l])=>`<th>${esc(l.replace(/ \(.*\)/,''))}</th>`).join('')}</tr></thead><tbody>${L.slice(0,12).map(x=>`<tr><td><span class="bg ${x.st==='신규'?'ok':'inf'}">${x.st}</span></td>${cols.map(([f])=>`<td>${esc(f==='safety'?(miSafety(x[f])||x[f]):x[f])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${L.length>12?`<div class="muted" style="font-size:12px;margin-top:4px">${L.length}건 중 12건 미리보기</div>`:''}`:''}`;
+}
+function miApply(){
+  const C=MIMP[mi.kind],{L}=miData();
+  if(mi.map[C.key]==null||!L.length){toast('등록할 내용이 없습니다 — 파일을 고르거나 붙여넣고 열 연결을 확인하세요');return}
+  const snap={db:JSON.stringify(db),ph:[]};let a=0,u=0,ns=0;
+  L.forEach(o=>{
+    if(mi.kind==='sup'){
+      let s=o.ex;if(s)u++;else{s={id:uid(),name:o.name,contacts:[],contactLog:[]};db.suppliers.push(s);a++}ensureContacts(s);
+      if(o.code)s.code=o.code;if(o.items)s.items=o.items;if(!s.code)s.code=s.code||'';if(!s.items)s.items=s.items||'';
+      if(o.contact)importContact(s,o.contact,o.phone||'',o.email||'');
+      syncLegacy(s);touch(s);
+    }else{
+      let sid='';if(o.sup){let s=supFind(o.sup);if(!s){s=touch({id:uid(),code:'',name:o.sup,items:'',contact:'',phone:'',email:''});db.suppliers.push(s);ns++}sid=s.id}
+      let p=o.ex;if(p)u++;else{p={id:uid(),partNo:o.partNo};db.parts.push(p);a++}
+      if(o.name)p.name=o.name;else if(p.name==null)p.name='';
+      if(o.model)p.model=o.model;else if(p.model==null)p.model='';
+      if(sid)p.supplierId=sid;else if(p.supplierId==null)p.supplierId='';
+      const pr=String(o.price||'').replace(/[,원\s]/g,'');if(pr!==''&&isFinite(+pr))p.price=+pr;else if(p.price==null)p.price='';
+      const sf=miSafety(o.safety);if(sf)p.safety=sf;
+      touch(p);
+    }
+  });
+  save();closeModal(true);render();
+  toast(`${mi.kind==='sup'?'협력사':'부품'} 신규 ${a}건 · 갱신 ${u}건${ns?` · 협력사 ${ns}곳 추가`:''}`);
+  if(a||u)offerUndo(snap,`${C.title}: 신규 ${a}건 · 갱신 ${u}건`);
 }
 
 /* ================= BOM (1단계: 완성품 – 부품 – 소요량) =================
