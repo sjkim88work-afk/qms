@@ -667,17 +667,80 @@ let loadFailed=null,saveFailed=null;
 let storageBlocked=false;
 function load(){if(RO){const d={...SHARE.db};delete d.photos;return migrate(d)}try{localStorage.getItem('__t')}catch(e){storageBlocked=true;return defaultDB()}let r=null;try{r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r))}catch(e){console.error(e);loadFailed=String(e&&e.message||e);try{if(r)localStorage.setItem(KEY+'_broken',r)}catch(_){}}return defaultDB()}
 let db=load();
+/* ---- 데이터 원본 저장소 ----
+   브라우저 대용량 저장소(IndexedDB, 수백 MB)에 저장. 기본 저장소(localStorage)는 사이트당 약 5MB라
+   BOM · 입고 라인이 쌓이면 가득 차므로 옮김. 처음 열 때 기존 데이터를 자동으로 옮기고 확인 후 정리.
+   IndexedDB를 쓸 수 없는 환경에서만 예전 방식(localStorage)으로 동작. */
+const DDB='personalQMS_data';let _ddb=null,dataStore='ls',dataReady=!!RO,brokenRaw=null,dataMigrated=false,dataBytes=0;
+function ddb(){
+  if(!_ddb)_ddb=new Promise((res,rej)=>{
+    if(!window.indexedDB)return rej(new Error('IndexedDB 미지원'));
+    let r;try{r=indexedDB.open(DDB,1)}catch(e){return rej(e)}
+    r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('kv'))r.result.createObjectStore('kv')};
+    r.onsuccess=()=>{const d=r.result;d.onversionchange=()=>d.close();res(d)};
+    r.onerror=()=>rej(r.error||new Error('저장소를 열 수 없습니다'));
+    r.onblocked=()=>rej(new Error('저장소가 다른 창에서 사용 중입니다'));
+  });
+  return _ddb;
+}
+function dTx(mode,fn){return ddb().then(d=>new Promise((res,rej)=>{let tx;try{tx=d.transaction('kv',mode)}catch(e){return rej(e)}
+  const out=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(out instanceof IDBRequest?out.result:out);
+  tx.onerror=()=>rej(tx.error||new Error('저장 실패'));tx.onabort=()=>rej(tx.error||new Error('저장 공간 부족 또는 중단'))}))}
+const dGet=k=>dTx('readonly',s=>s.get(k)),dPut=(k,v)=>dTx('readwrite',s=>{s.put(v,k)});
+const savedMs=d=>{const t=new Date(d&&d.meta&&d.meta.saved||0).getTime();return isFinite(t)?t:0};
+async function bootData(){
+  if(RO){dataReady=true;return}
+  let rec;
+  try{rec=await dGet(KEY)}catch(e){console.warn('IndexedDB 사용 불가 — 기본 저장소로 동작',e);dataStore='ls';dataReady=true;return}
+  dataStore='idb';
+  let legacy=null;try{legacy=localStorage.getItem(KEY)}catch(e){}
+  if(rec!=null){
+    try{db=migrate(JSON.parse(rec));loadFailed=null;storageBlocked=false;dataBytes=rec.length}
+    catch(e){console.error(e);loadFailed=String(e&&e.message||e);brokenRaw=rec;db=defaultDB();dataReady=true;return}
+    // 옮긴 뒤에도 기본 저장소에 남은 사본(예전 버전 창에서 저장된 것 등) — 더 최근이면 가져오고 정리
+    if(legacy){let ld=null;try{ld=JSON.parse(legacy)}catch(e){}
+      if(ld){if(savedMs(ld)>savedMs(db)){db=migrate(ld);try{const j=JSON.stringify(db);await dPut(KEY,j);dataBytes=j.length;dataMigrated='newer'}catch(e){console.error(e)}}
+        try{localStorage.removeItem(KEY)}catch(e){}}}
+  }else if(legacy&&!loadFailed){
+    // 처음: 기본 저장소 → 대용량 저장소로 옮기고, 다시 읽어 같은지 확인한 뒤에만 기본 저장소를 비움
+    try{const j=JSON.stringify(db);await dPut(KEY,j);const back=await dGet(KEY);
+      if(back===j){try{localStorage.removeItem(KEY)}catch(e){}dataMigrated=true;dataBytes=j.length}
+      else throw new Error('확인 실패')}
+    catch(e){console.error('데이터 이전 실패 — 기본 저장소 유지',e);dataStore='ls'}
+  }
+  if(dataStore==='idb')storageBlocked=false;
+  dataReady=true;
+}
+let _pw=null,_pAgain=false;
+const dataCh=(()=>{try{return RO?null:new BroadcastChannel('personalQMS_data')}catch(e){return null}})(),TAB_ID=Math.random().toString(36).slice(2);
+function persist(){
+  if(dataStore!=='idb')return Promise.resolve();
+  if(_pw){_pAgain=true;return _pw}
+  let j;try{j=JSON.stringify(db)}catch(e){saveFailed=String(e.message||e);renderAlert();return Promise.resolve()}
+  _pw=dPut(KEY,j).then(()=>{dataBytes=j.length;if(saveFailed){saveFailed=null;renderAlert()}
+      try{dataCh&&dataCh.postMessage({t:'saved',from:TAB_ID})}catch(e){}updateSaveInfo()})
+    .catch(e=>{console.error(e);saveFailed=String(e&&e.message||e);renderAlert();updateSaveInfo()})
+    .finally(()=>{_pw=null;if(_pAgain){_pAgain=false;persist()}});
+  return _pw;
+}
+// 화면을 닫기 직전에 저장 중인 내용이 있으면 확인
+window.addEventListener('beforeunload',e=>{if(_pw||_pAgain){e.preventDefault();e.returnValue=''}});
+if(dataCh)dataCh.onmessage=async ev=>{const m=ev.data||{};if(m.t!=='saved'||m.from===TAB_ID||!dataReady||dataStore!=='idb')return;
+  try{const r=await dGet(KEY);if(r){db=migrate(JSON.parse(r));dataBytes=r.length;render();updateSaveInfo();toast('다른 창에서 변경된 내용을 불러왔습니다')}}catch(e){console.error(e)}};
+const bootReady=bootData().catch(e=>{console.error(e);dataReady=true});
 let backupDir=null,photoDir=null;  // 사진 · 첨부 폴더, 백업 폴더 (이 PC, 선택)
 
 function save(){
   if(RO)return;  // 읽기 전용 사본은 저장하지 않음
+  if(!dataReady){console.warn('데이터를 불러오기 전 저장 요청 — 무시');return}
   if(!undoBusy&&undoSnap&&!save._keep)hideUndo();
   if(loadFailed){renderAlert();toast('데이터를 읽지 못해 저장을 멈췄습니다 — 위 빨간 안내를 확인하세요');return}
   lockSev();
   const prevSaved=db.meta.saved;db.meta.saved=now();db.meta.appVer=APP_VER;
   try{czSyncAll()}catch(e){}
   if(storageBlocked){updateSaveInfo();return}
-  try{localStorage.setItem(KEY,JSON.stringify(db));if(saveFailed){saveFailed=null;renderAlert()}}catch(e){db.meta.saved=prevSaved;saveFailed=String(e&&e.message||e);renderAlert();updateSaveInfo();return}
+  if(dataStore==='idb')persist();
+  else try{localStorage.setItem(KEY,JSON.stringify(db));if(saveFailed){saveFailed=null;renderAlert()}}catch(e){db.meta.saved=prevSaved;saveFailed=String(e&&e.message||e);renderAlert();updateSaveInfo();return}
   if(photoDir){clearTimeout(save._ph);save._ph=setTimeout(()=>syncPhotoFiles(false),1500)}
   else if(lazyH.photoDir&&!lazyNo.photoDir&&navigator.userActivation&&navigator.userActivation.isActive)setTimeout(()=>{if(phNeedWrite())ensureDir('photoDir')},300);
   if(backupDir&&db.meta.lastAutoBackup!==today()){clearTimeout(save._ab);save._ab=setTimeout(()=>autoBackup(false),3000)}
@@ -687,10 +750,10 @@ function renderAlert(){
   const b=$('#alertBar');if(!b)return;
   if(storageBlocked){b.style.display='flex';b.style.background='#fff7e0';b.style.borderBottomColor='#f0d49b';b.style.color='#5c4210';b.innerHTML=`<span>💡 <b>미리보기 화면에서는 데이터가 저장되지 않습니다.</b> 이 창은 보안상 브라우저 저장소가 막혀 있어, 여기서 입력한 내용은 창을 닫으면 사라집니다. 실제로 쓰려면 파일을 내려받아 <b>Edge 또는 Chrome에서 직접</b> 여세요.</span>`;return}
   if(loadFailed){b.style.display='flex';b.innerHTML=`<span>⛔ <b>저장된 데이터를 읽지 못했습니다</b> (${esc(loadFailed)}). 원본은 보존해 두었고, 덮어쓰지 않도록 <b>저장을 멈췄습니다.</b> 백업 파일로 복원하거나 원본을 내려받아 확인하세요.</span><span style="flex:1"></span><button class="b s" onclick="downloadBroken()">원본 내려받기</button><button class="b s p" onclick="pickImport('replace')">백업으로 복원</button>`;return}
-  if(saveFailed){b.style.display='flex';b.innerHTML=`<span>⛔ <b>브라우저 저장 실패</b> — 마지막 변경이 저장되지 않았습니다 (${esc(saveFailed)}). 저장 공간이 가득 찼을 수 있습니다. 지금 <b>백업 다운로드</b>를 하고, 설정 › 저장 공간에서 사진 용량을 줄이세요.</span><span style="flex:1"></span><button class="b s p" onclick="exportJSON(true)">백업 다운로드</button>`;return}
+  if(saveFailed){b.style.display='flex';b.innerHTML=`<span>⛔ <b>브라우저 저장 실패</b> — 마지막 변경이 저장되지 않았습니다 (${esc(saveFailed)}). ${dataStore==='idb'?'PC 디스크 공간이 부족하거나 브라우저가 저장을 막았을 수 있습니다. 지금 <b>백업 다운로드</b>를 하고, 디스크 여유 공간을 확인하세요.':'저장 공간이 가득 찼을 수 있습니다. 지금 <b>백업 다운로드</b>를 하고, 설정 › 저장 공간에서 사진 용량을 줄이세요.'}</span><span style="flex:1"></span><button class="b s p" onclick="exportJSON(true)">백업 다운로드</button>`;return}
   b.style.display='none';
 }
-function downloadBroken(){let r='';try{r=localStorage.getItem(KEY+'_broken')||localStorage.getItem(KEY)||''}catch(e){}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([r],{type:'application/json'}));a.download='QMS_원본데이터.json';a.click()}
+function downloadBroken(){let r=brokenRaw||'';if(!r)try{r=localStorage.getItem(KEY+'_broken')||localStorage.getItem(KEY)||''}catch(e){}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([r],{type:'application/json'}));a.download='QMS_원본데이터.json';a.click()}
 const backupDays=()=>Math.max(1,num(db.settings.backupDays)||7);
 const backupDue=()=>!db.meta.lastBackup||diffDays(loc(db.meta.lastBackup,10),today())>=backupDays();
 function updateSaveInfo(){
@@ -1126,7 +1189,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.1';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.2';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4292,7 +4355,7 @@ function renderData(){
   function dirSt(k){const h=k==='photoDir'?photoDir:backupDir,lz=lazyH[k];return h?`<span class="bg ok">사용 중</span> <b>${esc(h.name)}</b>`:lz?`<span class="bg warn">허용 대기</span> <b>${esc(lz.name)}</b> <span class="muted">— ${k==='photoDir'?'사진을 저장할 때':'백업할 때'} 허용 창이 뜹니다</span>`:'<span class="bg mut">지정 안 됨</span>'}
   function dirBtns(k,extra){const on=!!((k==='photoDir'?photoDir:backupDir)||lazyH[k]);return `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${on?extra:''}<button class="b s ${on?'':'p'}" onclick="pickDir('${k}')">${on?'다른 폴더':'폴더 지정'}</button>${on?`<button class="b s" onclick="unlinkDir('${k}')">해제</button>`:''}</span>`}
   setTimeout(()=>{const e=$('#persistSt');if(!e)return;if(!(navigator.storage&&navigator.storage.persisted)){e.textContent='브라우저가 지원하지 않음';return}navigator.storage.persisted().then(v=>{e.innerHTML=v?'<span class="bg ok">삭제 방지 적용</span>':'<span class="bg warn">미적용</span> <span class="muted">— 백업을 더 자주 받으세요</span>'}).catch(()=>{e.textContent='-'})},0);
-  P.storage=()=>sg('저장 공간',sv('브라우저 저장공간','사진은 별도 대용량 저장소에 보관됩니다.','<span id="usage" class="muted">계산 중…</span>'))+
+  P.storage=()=>sg('저장 공간',sv('데이터 저장소',dataStore==='idb'?'불량 · NCR · 기준정보 · BOM · 입고 등 모든 기록과 사진을 브라우저의 <b>대용량 저장소</b>에 보관합니다 (PC 디스크 여유 공간 범위에서 수백 MB 이상).':'이 환경에서는 대용량 저장소를 쓸 수 없어 <b>기본 저장소</b>(약 5MB)에 보관합니다. 사진은 별도 저장소에 보관됩니다.',`<span class="muted">기록 ${(n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB')(JSON.stringify(db).length)}</span>`)+sv('브라우저 저장공간','이 사이트가 쓰는 전체 용량입니다 (사진 포함).','<span id="usage" class="muted">계산 중…</span>'))+
     sg('초기화',sv('전체 초기화','모든 데이터와 사진을 영구 삭제합니다. 되돌릴 수 없으니 먼저 백업하세요.',btn('초기화','resetAll()','dz')));
   if(tab==='storage')setTimeout(showUsage,0);
   return `<div class="set"><aside class="snav">${nav}</aside><section class="spane"><div class="row" style="margin-bottom:6px"><h2>${title}</h2><span style="flex:1"></span><span id="setSaved" class="muted" style="opacity:0;transition:opacity .4s;font-size:12px"></span></div>${(P[tab]||P.general)()}<div class="help" style="margin:-8px 4px 20px">설정은 값을 바꾸면 바로 저장됩니다.</div></section></div>`;
@@ -4463,7 +4526,7 @@ async function autoBackup(force,tag){
     if(keep>0){const names=[];for await(const [n,h] of backupDir.entries()){if(h.kind==='file'&&BK_RE.test(n))names.push(n)}
       names.sort().reverse();for(const n of names.slice(keep)){try{await backupDir.removeEntry(n);removed++}catch(e){}}}
     db.meta.lastAutoBackup=today();db.meta.lastBackup=now();db.meta.lastAutoBackupAt=now();
-    try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}
+    if(dataStore==='idb')persist();else try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}
     if(force)toast(`‘${backupDir.name}’ 폴더에 ${name} 저장${removed?` · 오래된 백업 ${removed}개 정리`:''}`);
     if(state.tab==='data'||state.tab==='dash')render();
   }catch(e){toast('자동 백업 실패: '+e.message)}
@@ -4787,7 +4850,7 @@ document.addEventListener('keydown',e=>{
   if($('#cfm').classList.contains('on'))return;
   if(e.key==='Escape'&&$('#modal').classList.contains('on'))closeModal();
 });
-window.addEventListener('storage',e=>{if(e.key===KEY){db=load();render();toast('다른 탭에서 변경된 내용을 불러왔습니다')}});
+window.addEventListener('storage',e=>{if(e.key===KEY&&dataStore==='ls'&&dataReady){db=load();render();toast('다른 탭에서 변경된 내용을 불러왔습니다')}});
 
 /* ================= RCA · 사내 8D (PHA QMS 통합) =================
    Case · Action · 단계 게이트(IATF) · 원인분석 워크시트
@@ -5804,10 +5867,13 @@ if(RO){
   document.querySelector('nav').insertAdjacentHTML('afterend',`<div class="roBar noprint">📖 <b>읽기 전용 사본</b> — ${esc(m.company||'')} ${esc(m.by||'')} · 기준 <b>${esc(loc(m.created)||'-')}</b> · ver ${esc(m.ver||'')}${m.photos!=null?` · 사진 ${m.photos}장`:''} <span class="muted">— 보기 · 검색 · 출력만 됩니다. 고친 내용은 저장되지 않습니다.</span></div>`);
   ['hdrBk','hdrInstall'].forEach(i=>{const e=$('#'+i);if(e)e.style.display='none'});
 }
-if(!loadFailed&&!RO)lockSev();
-render();renderAlert();updateSaveInfo();
+bootReady.then(()=>{
+  if(!loadFailed&&!RO)lockSev();
+  render();renderAlert();updateSaveInfo();
+  if(dataMigrated)setTimeout(()=>toast(dataMigrated==='newer'?'예전 버전 창에서 저장된 최신 내용을 가져왔습니다':'데이터를 대용량 저장소로 옮겼습니다 — 이제 용량 걱정 없이 쓸 수 있습니다'),400);
+});
 // 데이터 원본은 브라우저. 사진·첨부 폴더와 백업 폴더만 이 PC 폴더에 사본으로 저장 (예전 OneDrive 연결 정보는 정리)
-(async()=>{if(RO)return;try{
+(async()=>{if(RO)return;await bootReady;try{
   for(const k of ['qmsDir','dataFile'])await hDel(k).catch(()=>{});
   for(const k of ['photoDir','backupDir']){const h=await hGet(k);if(!h)continue;
     if(await permOK(h,false))dirAttach(k,h,true);else lazyH[k]=h}
@@ -5825,9 +5891,9 @@ async function pwaInstall(){
   pwaPrompt.prompt();try{await pwaPrompt.userChoice}catch(e){}pwaPrompt=null;$('#hdrInstall').style.display='none';
 }
 // 앱 아이콘 바로가기 (불량 등록 · NCR)
-(()=>{const g=new URLSearchParams(location.search).get('go');if(!g)return;
+bootReady.then(()=>{const g=new URLSearchParams(location.search).get('go');if(!g)return;
   history.replaceState(null,'',location.pathname);
-  if(g==='defect-new'){go('defect');setTimeout(()=>editDefect(),50)}else if(TABS.some(t=>t[0]===g))go(g)})();
+  if(g==='defect-new'){go('defect');setTimeout(()=>editDefect(),50)}else if(TABS.some(t=>t[0]===g))go(g)});
 if(isStandalone())document.documentElement.classList.add('standalone');
 </script>
 </body>
