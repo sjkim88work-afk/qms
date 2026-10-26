@@ -3528,7 +3528,7 @@ function contactCard(id){
   const s=supById(id);ensureContacts(s);
   const log=[...s.contactLog].sort((a,b)=>(b.ts||b.at||'').localeCompare(a.ts||a.at||'')).slice(0,30);
   openModal(`${s.name} 연락처`,`${contactTable(s,true)}<div class="sec">최근 변경 이력</div>${log.length?`<ul class="act">${log.map(l=>`<li><span class="muted">${esc(l.at)}</span> ${esc(l.text)}${l.reason?` <span class="muted">— ${esc(l.reason)}</span>`:''}</li>`).join('')}</ul>`:'<div class="muted">이력 없음</div>'}`,
-    [{label:'+ 담당자 추가',fn:()=>editSup(id,{add:1})},{label:'수정',fn:()=>editSup(id)},{label:'닫기',cls:'p',fn:closeModal}]);
+    [{label:'수정',fn:()=>editSup(id)},{label:'닫기',cls:'p',fn:closeModal}]);
 }
 function exportContactsCSV(){
   const rows=[['협력사','코드','약어','국가','국내외','주소','품목','주담당','역할','이름','부서/직급','전화','휴대폰','이메일','비고','상태','시작일','종료일']];
@@ -3541,16 +3541,13 @@ function supDetail(id){
   const tm={};ds.forEach(d=>tm[d.type||'(미지정)']=(tm[d.type||'(미지정)']||0)+num(d.qty));
   const ms=lastMonths(to.slice(0,7),12);
   const ns=db.ncrs.filter(n=>n.supplierId===id).sort((a,b)=>(b.issueDate||'').localeCompare(a.issueDate||''));
-  const info=[s.code,s.short&&s.short!==s.name?s.short:'',supCountry(s),s.region,s.items].filter(Boolean).map(esc).join(' · ');
-  const body=`<div class="help">${info||'<span class="muted">코드 · 품목 미입력</span>'}${s.address?`<br><span class="muted">${esc(s.address)}</span>`:''}</div>
-  <div class="sec" style="display:flex;align-items:center;gap:6px">담당자 <span class="muted" style="font-weight:normal;font-size:12px">— 기준정보 협력사와 같은 연락처입니다</span><span style="flex:1"></span>
-    <button type="button" class="b s" onclick="editSup('${id}',{back:1})">담당자 수정</button><button type="button" class="b s p" onclick="editSup('${id}',{back:1,add:1})">+ 담당자 추가</button></div>${contactTable(s,false)}
+  const body=`<div class="help">${esc(s.code)} · ${esc(s.items)}</div>${contactTable(s,false)}
   <div class="grid g2" style="margin-top:10px"><div>${pareto(tm,'개')}</div><div>${barChart(ms.map(x=>x.slice(2).replace('-','.')),[{name:'불량수량',values:ms.map(m=>sum(db.defects.filter(d=>d.supplierId===id&&(d.date||'').startsWith(m)),'qty')),color:'#1f5fbf'}])}</div></div>
   <div class="sec">불량 이력 (${from} ~ ${to}, ${ds.length}건)</div>
   <div class="tw" style="max-height:260px"><table><thead><tr><th>발생일</th><th>부품</th><th>유형</th><th class="n">수량</th><th>처리</th><th>NCR</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.date}</td><td>${esc(d.partNo)} ${esc(d.partName)}</td><td>${esc(d.type)}</td><td class="n">${num(d.qty)}</td><td>${esc(d.disposition)}</td><td>${esc(db.ncrs.find(n=>n.id===d.ncrId)?.no||'')}</td></tr>`).join('')}</tbody></table></div>
   <div class="sec">NCR 이력 (전체 ${ns.length}건)</div>
   <div class="tw" style="max-height:220px"><table><tbody>${ns.map(n=>`<tr><td>${esc(n.no)}</td><td>${esc(n.issueDate)}</td><td>${esc(n.title)}</td><td>${stB(ncrStatus(n))}</td></tr>`).join('')}</tbody></table></div>`;
-  openModal(`${s.name} 품질 이력`,body,[{label:'협력사 정보 수정',fn:()=>editSup(id,{back:1})},{label:'닫기',cls:'p',fn:closeModal}]);
+  openModal(`${s.name} 품질 이력`,body,[{label:'협력사 정보 수정',fn:()=>editSup(id)},{label:'닫기',cls:'p',fn:closeModal}]);
 }
 async function rcvMonth(el){
   const changed=[...document.querySelectorAll('#mf input[name^="r_"]')].some(i=>i.value!==i.defaultValue);
@@ -3691,9 +3688,7 @@ function renderMaster(){
   <div id="msBom">${bomTable()}</div></div>`;
 }
 let curContacts=[],origContacts=[],curEvents=[],showInactive=false;
-let supBack=null;
-function editSup(id,opt){
-  opt=opt||{};supBack=opt.back&&id?id:null;
+function editSup(id){
   const s=id?ensureContacts(supById(id)):{contacts:[],contactLog:[]};
   origContacts=JSON.parse(JSON.stringify(s.contacts||[]));curContacts=JSON.parse(JSON.stringify(s.contacts||[]));curEvents=[];showInactive=false;
   const log=[...(s.contactLog||[])].sort((a,b)=>(b.ts||b.at||'').localeCompare(a.ts||a.at||''));
@@ -3711,11 +3706,9 @@ function editSup(id,opt){
   <div id="ctBox"></div><div id="rpBox"></div>
   <div class="fg" style="margin-top:10px"><label class="full">변경 사유 / 메모 (이력에 함께 기록)<input name="chgReason" placeholder="예: 품질팀 인사이동, 전화번호 변경 통보(10/24)"></label></div>
   ${id?`<div class="sec">연락처 변경 이력 (${log.length})</div>${log.length?`<div class="tw" style="max-height:220px"><table><thead><tr><th>적용일</th><th>내용</th><th>사유</th><th>기록 시각</th></tr></thead><tbody>${log.map(l=>`<tr><td style="white-space:nowrap">${esc(l.at)}</td><td>${nl(l.text)}</td><td>${esc(l.reason)}</td><td class="muted" style="white-space:nowrap">${esc(loc(l.ts))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="muted">아직 이력이 없습니다. 연락처를 추가·수정·교체하면 자동으로 기록됩니다.</div>'}`:''}`,
-  [{label:'취소',fn:async()=>{const b=supBack;await closeModal();if(b&&!$('#modal').classList.contains('on'))supDetail(b)}},{label:'저장',cls:'p',fn:()=>saveSup(id)}]);
+  [{label:'취소',fn:closeModal},{label:'저장',cls:'p',fn:()=>saveSup(id)}]);
   if(!id&&!curContacts.length)addContact(true);
-  if(id&&opt.add)addContact(true);
   renderContacts();
-  if(id&&opt.add)setTimeout(()=>{const ins=$('#ctBox').querySelectorAll('input[placeholder="이름 *"]');ins[ins.length-1]?.focus();ins[ins.length-1]?.scrollIntoView({block:'center'})},60);
 }
 function renderContacts(){
   const box=$('#ctBox');if(!box)return;
@@ -3806,7 +3799,6 @@ function saveSup(id){
   entries.forEach(e=>sp.contactLog.push({id:uid(),at:e.at,ts:now(),text:e.text,reason}));
   syncLegacy(sp);touch(sp);save();closeModal(true);render();
   if(entries.length)toast(`저장됨 · 연락처 이력 ${entries.length}건 기록`);
-  if(supBack&&supBack===sp.id){const b=supBack;supBack=null;supDetail(b)}
 }
 async function delSup(id){
   const s=supById(id);if(!s)return;
