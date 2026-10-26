@@ -3916,6 +3916,7 @@ async function bomClear(){
 /* ---- BOM 업로드 (xlsx · csv · 붙여넣기) — 레벨 열이 있으면 다단계, 없으면 1단계(모품번 – 자품번) ---- */
 const BOM_F=[['level','레벨'],['fgNo','제품(모품) 품번'],['fgName','제품명'],['partNo','품번 (투입품번)',1],['partName','품명'],['type','품목유형'],['proc','조달구분'],['model','차종'],['unit','소요단위'],['qty','U/S (소요량)'],['date','적용일자']];
 let bi={rows:[],hdr:0,map:{},name:'',mode:'fg'};
+const BOM_HEAD='레벨\t선택\t품목유형\t조달구분\t차종\t품번\t\t품명\t\t소요단위\tU/S';  // MES 'BOM 구성현황' 복사 형식
 function bomAutoMap(h){
   const m={},used=new Set(),cell=i=>String(h[i]||'').replace(/\s+/g,'').toLowerCase();
   const tests=[ // 단위 · 조달 · 유형 · 제품명을 먼저 판정해야 ‘소요단위’가 소요량으로, ‘모품명’이 품번으로 잡히지 않음
@@ -3939,9 +3940,12 @@ function openBomImport(){
    <b>다단계 (MES ‘BOM 구성현황’)</b>: 레벨 · 품번 · 품명 · 품목유형 · 조달구분 · 차종 · 소요단위 · U/S — <b>레벨 0 줄이 제품</b>이고, 그 아래 레벨 1 · 2 …를 상위 품번에 붙입니다. 여러 제품을 이어 붙여도 레벨 0마다 새 제품으로 나눕니다.<br>
    <b>1단계 (ERP 정전개)</b>: 모품번(제품) · 자품번 · 소요량 열이 있으면 그대로 읽습니다.</div>
   <div class="row" style="margin-top:10px"><label class="b p" style="cursor:pointer">파일 선택 (.xlsx / .csv)<input type="file" accept=".xlsx,.csv,.txt" style="display:none" onchange="bomFile(this.files[0]);this.value=''"></label><span id="bomSheet"></span><span id="bomName" class="muted"></span></div>
-  <textarea id="bomPaste" placeholder="또는 MES 화면에서 복사한 표를 여기에 붙여넣기 (Ctrl+V) — 제목행(레벨 · 품번 …) 포함" style="min-height:80px;margin-top:8px;font-family:Consolas,monospace;font-size:12px" oninput="bomSet(parseRows(this.value),'붙여넣기')"></textarea>
+  <div class="muted" style="font-size:12px;margin-top:8px">또는 MES 화면의 표를 복사해 아래 <b>제목행 다음 줄</b>에 붙여넣기 (Ctrl+V) — 레벨 0(제품) 줄부터 복사하세요</div>
+  <textarea id="bomPaste" style="min-height:120px;margin-top:4px;font-family:Consolas,monospace;font-size:12px;white-space:pre;tab-size:10" oninput="bomSet(parseRows(this.value),'붙여넣기')">${esc(BOM_HEAD)}
+</textarea>
   <div id="bomMap" style="margin-top:10px"></div>`,
   [{label:'취소',fn:closeModal},{label:'등록',cls:'p',fn:bomApply}]);
+  setTimeout(()=>{const t=$('#bomPaste');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}},50);
 }
 async function bomFile(f){
   if(!f)return;
