@@ -876,6 +876,7 @@ function ncrReasons(d){
   const v=sevOf(d);if(v.grade==='C')return [];
   return [`심각도 ${v.grade} (${v.score}점${v.forced.length?' · '+v.forced.join(', '):''}) → ${v.resp}`];
 }
+// 단순 통보는 회신이 필요 없으므로, 통보하면 ‘통보 완료’ — 이후 유효성 검증(재발 확인)만 남음
 // 협력사 통보 여부 — 통보일이 있거나, 이미 회신·처리가 진행됐으면 통보한 것으로 봄
 const ncrNotified=n=>!!(n.notifyDate||n.replyDate||n.d3Date||n.validity==='적정'||n.verifyDate);
 const NOTIFY_GRACE=1; // 발행 후 이 일수가 지나도 통보 안 하면 ‘통보 지연’
@@ -885,7 +886,7 @@ function ncrStatus(n){
   if(n.verifyDate&&n.verifyResult==='유효')return '종결';
   if(n.verifyDate&&String(n.verifyResult||'').startsWith('무효'))return '검증 무효';
   if(!ncrNotified(n))return '미통보';
-  if(n.reqType==='단순 통보')return '통보(확인대기)';
+  if(n.reqType==='단순 통보')return '통보 완료(검증대기)';
   if(n.validity==='적정')return '승인(검증대기)';
   if(n.replyDate)return n.validity==='보완요청'?'보완요청':'대책서 검토';
   if(n.requestDate)return '대책요청';
@@ -1056,12 +1057,12 @@ function ncrFlags(n){
     requestLate:notifyLate(n),
     d3Late:!info&&ncrNotified(n)&&!!(n.d3Due&&!n.d3Date&&!n.replyDate&&t>n.d3Due),
     replyLate:!info&&ncrNotified(n)&&!!(n.requestDate&&!n.replyDate&&n.dueDate&&t>n.dueDate),
-    verifyLate:!!((st==='승인(검증대기)'||st==='통보(확인대기)')&&n.verifyDue&&t>n.verifyDue),
-    verifySoon:!!((st==='승인(검증대기)'||st==='통보(확인대기)')&&n.verifyDue&&t<=n.verifyDue&&diffDays(t,n.verifyDue)<=3),
+    verifyLate:!!((st==='승인(검증대기)'||st==='통보 완료(검증대기)')&&n.verifyDue&&t>n.verifyDue),
+    verifySoon:!!((st==='승인(검증대기)'||st==='통보 완료(검증대기)')&&n.verifyDue&&t<=n.verifyDue&&diffDays(t,n.verifyDue)<=3),
     farLate:farState(n)==='지연'
   };
 }
-const ST_CLS={'미통보':'warn','통보(확인대기)':'mut','발행':'mut','대책요청':'inf','보완요청':'warn','대책서 검토':'inf','승인(검증대기)':'ok','검증 무효':'bad','유효성검증':'inf','종결':'ok','진행':'warn','완료':'ok'};
+const ST_CLS={'미통보':'warn','통보 완료(검증대기)':'ok','발행':'mut','대책요청':'inf','보완요청':'warn','대책서 검토':'inf','승인(검증대기)':'ok','검증 무효':'bad','유효성검증':'inf','종결':'ok','진행':'warn','완료':'ok'};
 const stB=s=>`<span class="bg ${ST_CLS[s]||'mut'}">${esc(s)}</span>`;
 function dday(due,done){
   if(!due)return '<span class="muted">-</span>';
@@ -1192,7 +1193,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.1';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -2728,7 +2729,7 @@ function ncrTable(){
 }
 function renderNcr(){
   const f=state.nf,S=db.settings;
-  const sel=[['open','미종결'],['late','지연 항목'],['','전체'],['미통보','미통보'],['발행','발행'],['대책요청','대책요청'],['대책서 검토','대책서 검토'],['보완요청','보완요청'],['승인(검증대기)','승인 · 검증 대기'],['검증 무효','검증 무효'],['통보(확인대기)','단순 통보'],['종결','종결']];
+  const sel=[['open','미종결'],['late','지연 항목'],['','전체'],['미통보','미통보'],['발행','발행'],['대책요청','대책요청'],['대책서 검토','대책서 검토'],['보완요청','보완요청'],['승인(검증대기)','승인 · 검증 대기'],['검증 무효','검증 무효'],['통보 완료(검증대기)','단순 통보'],['종결','종결']];
   return `<div class="card noprint"><div class="row">
     <button class="b p" onclick="editNcr()">+ NCR 발행</button>
     <select onchange="state.nf.status=this.value;$('#ntab').innerHTML=ncrTable()">${sel.map(([v,l])=>`<option value="${v}" ${v===f.status?'selected':''}>${l}</option>`).join('')}</select>
@@ -2935,7 +2936,7 @@ function ncrTabsBar(id,n){
 function ncrModeDefault(n,id){
   if(!id)return 'issue';const st=ncrStatus(n);
   if(['대책요청','대책서 검토','보완요청'].includes(st))return 'reply';
-  if(['승인(검증대기)','검증 무효','종결','통보(확인대기)'].includes(st))return 'verify';
+  if(['승인(검증대기)','검증 무효','종결','통보 완료(검증대기)'].includes(st))return 'verify';
   return 'issue';
 }
 function ncrMode(m,tab){
@@ -2964,7 +2965,7 @@ function ncrFoot(m){
 function ncrTabDefault(n,id){
   if(!id)return 'a';const st=ncrStatus(n);
   if(['대책요청','대책서 검토','보완요청'].includes(st))return 'b';
-  if(['승인(검증대기)','검증 무효','종결','통보(확인대기)'].includes(st))return 'c';
+  if(['승인(검증대기)','검증 무효','종결','통보 완료(검증대기)'].includes(st))return 'c';
   return 'a';
 }
 function ncrTab(k,fromMode){
@@ -5543,7 +5544,7 @@ const CZ_NCR_FLOW={
   '대책요청':n=>['협력사','협력사 대책서 회신 확인',n.dueDate||addDays(today(),2)],
   '대책서 검토':n=>['나','협력사 대책서 평가 (NCR '+n.no+')',today()],
   '보완요청':n=>['협력사','대책서 보완 회신 확인',addDays(today(),5)],
-  '통보(확인대기)':n=>['나','협력사 처리 결과 확인',today()],
+  '통보 완료(검증대기)':n=>['나','재발 여부 확인 · 유효성 검증 (NCR '+n.no+')',n.verifyDue||addDays(today(),14)],
   '승인(검증대기)':n=>['나','대책 효과(유효성) 검증 — NCR '+n.no,n.verifyDue||addDays(today(),14)],
   '종결':n=>['나','NCR 유효성 검증 완료 — RCA 단계 마무리',today()],
   '검증 무효':n=>['나','유효성 검증 무효 — 재대책 요구 여부 결정',today()]
