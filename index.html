@@ -1194,7 +1194,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.2';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.3';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -3726,7 +3726,7 @@ function msClick(t,k){const st=msState[t];if(st.k===k)st.d=-st.d;else{st.k=k;st.
 const sth=(t,k,label,cls='',tip='')=>{const st=msState[t],on=st.k===k;return `<th class="srt ${cls}${on?' on':''}" onclick="msClick('${t}','${k}')" title="${tip?esc(tip)+' · ':''}클릭해서 정렬">${label}<span class="ar">${on?(st.d>0?'▲':'▼'):'↕'}</span></th>`};
 const SQ_G={name:x=>x.s.name||'',items:x=>x.s.items||'',cnt:x=>x.cnt,nA:x=>x.nA,qty:x=>x.qty,rcv:x=>x.rcv||'',ppm:x=>x.ppm==null?'':x.ppm,grade:x=>x.grade==='-'?'':x.grade,ncr:x=>x.ncr,open:x=>x.open,late:x=>x.late,avgReply:x=>x.avgReply==null?'':x.avgReply,avgEval:x=>x.avgEval==null?'':x.avgEval,firstPass:x=>x.firstPass==null?'':x.firstPass,escN:x=>x.escN,pen:x=>x.pen,cost:x=>x.cost,rec:x=>x.rec,os:x=>x.os};
 const SUP_G={code:s=>s.code||'',name:s=>s.name||'',items:s=>s.items||'',nParts:s=>db.parts.filter(p=>p.supplierId===s.id).length,contact:s=>primaryOf(s)?.name||''};
-const PART_G={partNo:p=>p.partNo||'',name:p=>p.name||'',model:p=>p.model||'',sup:p=>supName(p.supplierId),supCode:p=>supById(p.supplierId)?.code||'',price:p=>p.price===''||p.price==null?'':partKRW(p)};
+const PART_G={partNo:p=>p.partNo||'',name:p=>p.name||'',model:p=>p.model||'',sup:p=>supName(p.supplierId),supCode:p=>supById(p.supplierId)?.code||'',price:p=>p.price===''||p.price==null?'':partKRW(p),bom:p=>bomUseN(p)};
 function msSupTable(){
   const q=msState.sq.trim().toLowerCase();
   let L=db.suppliers.filter(s=>!q||[s.code,s.name,s.short,s.country,COUNTRY[s.country]||'',s.region,s.items,...ensureContacts(s).contacts.map(c=>c.name+' '+c.email+' '+c.phone+' '+c.mobile)].join(' ').toLowerCase().includes(q));
@@ -3737,12 +3737,16 @@ function msSupTable(){
 }
 function msPartTable(){
   const q=msState.pq.trim().toLowerCase(),words=q.split(/\s+/).filter(Boolean);
-  let L=db.parts.filter(p=>(!msState.psup||p.supplierId===msState.psup)&&(!msState.pmodel||p.model===msState.pmodel)&&(!words.length||words.every(w=>[p.partNo,p.name,p.model,supName(p.supplierId),supById(p.supplierId)?.code||'',supById(p.supplierId)?.short||''].join(' ').toLowerCase().includes(w))));
+  const hasBom=!!db.bom.rows.length;
+  let L=db.parts.filter(p=>(!msState.psup||p.supplierId===msState.psup)&&(!msState.pmodel||p.model===msState.pmodel)&&(!hasBom||!msState.pbom||(msState.pbom==='y')===(bomUseN(p)>0))&&(!words.length||words.every(w=>[p.partNo,p.name,p.model,supName(p.supplierId),supById(p.supplierId)?.code||'',supById(p.supplierId)?.short||''].join(' ').toLowerCase().includes(w))));
   L=msSort(L,msState.part,PART_G);
-  return `<div class="muted" style="font-size:12px;margin-bottom:6px">${L.length}/${db.parts.length}개</div><div class="tw"><table class="mst"><colgroup><col style="width:150px"><col><col style="width:120px"><col style="width:96px"><col style="width:220px"><col style="width:120px"><col style="width:106px"></colgroup><thead><tr>${sth('part','partNo','부품번호')}${sth('part','name','부품명')}${sth('part','model','차종')}${sth('part','supCode','협력사 코드')}${sth('part','sup','협력사명')}${sth('part','price','단가','n','원화 환산 기준으로 정렬')}<th></th></tr></thead><tbody>
-  ${L.map(p=>`<tr><td style="white-space:nowrap"><b>${esc(p.partNo)}</b></td><td>${esc(p.name)}${p.safety&&p.safety!=='해당없음'?` <span class="bg bad">${esc(p.safety)}</span>`:''}</td><td>${esc(p.model)}</td><td class="nw">${esc(supById(p.supplierId)?.code||'')}</td><td>${esc(supName(p.supplierId))}${supById(p.supplierId)?.short&&supById(p.supplierId).short!==supName(p.supplierId)?` <span class="muted">${esc(supById(p.supplierId).short)}</span>`:''}</td><td class="n">${fmtPrice(p)}${p.price&&curOf(p)!=='KRW'?`<br><span class="muted" style="font-size:11.5px">${fxRate(curOf(p))?'≈ '+won(partKRW(p))+'원':'환율 미설정'}</span>`:''}</td><td style="white-space:nowrap"><button class="b s" onclick="editPart('${p.id}')">수정</button> <button class="b s d" onclick="delPart('${p.id}')">삭제</button></td></tr>`).join('')||`<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">${db.parts.length?'조건에 맞는 부품이 없습니다.':'등록된 부품이 없습니다.'}</td></tr>`}
+  return `<div class="muted" style="font-size:12px;margin-bottom:6px">${L.length}/${db.parts.length}개</div><div class="tw"><table class="mst"><colgroup><col style="width:150px"><col><col style="width:120px"><col style="width:96px"><col style="width:220px"><col style="width:120px">${hasBom?'<col style="width:104px">':''}<col style="width:106px"></colgroup><thead><tr>${sth('part','partNo','부품번호')}${sth('part','name','부품명')}${sth('part','model','차종')}${sth('part','supCode','협력사 코드')}${sth('part','sup','협력사명')}${sth('part','price','단가','n','원화 환산 기준으로 정렬')}${hasBom?sth('part','bom','BOM','','BOM에 들어가는 제품 수 — 누르면 BOM 구성현황에서 그 제품들을 보여줌'):''}<th></th></tr></thead><tbody>
+  ${L.map(p=>`<tr><td style="white-space:nowrap"><b>${esc(p.partNo)}</b></td><td>${esc(p.name)}${p.safety&&p.safety!=='해당없음'?` <span class="bg bad">${esc(p.safety)}</span>`:''}</td><td>${esc(p.model)}</td><td class="nw">${esc(supById(p.supplierId)?.code||'')}</td><td>${esc(supName(p.supplierId))}${supById(p.supplierId)?.short&&supById(p.supplierId).short!==supName(p.supplierId)?` <span class="muted">${esc(supById(p.supplierId).short)}</span>`:''}</td><td class="n">${fmtPrice(p)}${p.price&&curOf(p)!=='KRW'?`<br><span class="muted" style="font-size:11.5px">${fxRate(curOf(p))?'≈ '+won(partKRW(p))+'원':'환율 미설정'}</span>`:''}</td>${hasBom?`<td class="nw">${bomCell(p)}</td>`:''}<td style="white-space:nowrap"><button class="b s" onclick="editPart('${p.id}')">수정</button> <button class="b s d" onclick="delPart('${p.id}')">삭제</button></td></tr>`).join('')||`<tr><td colspan="${hasBom?8:7}" class="muted" style="text-align:center;padding:24px">${db.parts.length?'조건에 맞는 부품이 없습니다.':'등록된 부품이 없습니다.'}</td></tr>`}
   </tbody></table></div>`;
 }
+function bomCell(p){const u=bomPartUse(p),n=u.fgs.size,pn=esc(p.partNo).replace(/'/g,"\\'");
+  if(!n&&!u.fg)return '<span class="muted" title="BOM 어디에도 없음">없음</span>';
+  return (u.fg?`<a class="bg inf" style="cursor:pointer" onclick="bomGo('${pn}')" title="BOM의 최상위 제품">제품</a> `:'')+(n?`<a class="bg ok" style="cursor:pointer" onclick="bomGo('${pn}')" title="${esc([...u.fgs].slice(0,12).join(', '))}${n>12?' …':''}">${n}개 제품</a>`:'')}
 function msRefreshSup(){const b=$('#msSup');if(b)b.innerHTML=msSupTable()}
 function msRefreshPart(full){if(full){const y=window.scrollY;render();window.scrollTo(0,y);return}const b=$('#msPart');if(b)b.innerHTML=msPartTable()}
 function renderMaster(){
@@ -3756,7 +3760,8 @@ function renderMaster(){
   <div class="row" style="margin-bottom:8px"><input placeholder="검색 (번호·품명·차종·협력사)" value="${esc(msState.pq)}" oninput="msState.pq=this.value;msRefreshPart()" style="flex:1;min-width:160px">
     <select onchange="msState.psup=this.value;msRefreshPart()">${supOpts(msState.psup,'전체 협력사')}</select>
     <select onchange="msState.pmodel=this.value;msRefreshPart()"><option value="">전체 차종</option>${models.map(m=>`<option ${m===msState.pmodel?'selected':''}>${esc(m)}</option>`).join('')}</select>
-    ${msState.psup||msState.pmodel||msState.pq?`<button class="b s" onclick="msState.psup='';msState.pmodel='';msState.pq='';msRefreshPart(true)">필터 해제</button>`:''}</div>
+    ${db.bom.rows.length?`<select onchange="msState.pbom=this.value;msRefreshPart()"><option value="">BOM 전체</option><option value="y" ${msState.pbom==='y'?'selected':''}>BOM에 있음</option><option value="n" ${msState.pbom==='n'?'selected':''}>BOM에 없음</option></select>`:''}
+    ${msState.psup||msState.pmodel||msState.pq||msState.pbom?`<button class="b s" onclick="msState.psup='';msState.pmodel='';msState.pq='';msState.pbom='';msRefreshPart(true)">필터 해제</button>`:''}</div>
   <div id="msPart">${msPartTable()}</div></div></div>
   <div class="card"><h3>BOM 구성현황 <span class="muted" style="font-weight:normal;font-size:12px">왼쪽 제품을 고르면 오른쪽에 구성 트리 (레벨 · U/S)</span><span class="sp"></span>${bomIx().byFg.size?`<button class="b s" onclick="exportBomCSV()">CSV</button><button class="b s" onclick="bomClear()">전체 삭제</button>`:''}<button class="b s p" onclick="openBomImport()">BOM 업로드</button></h3>
   ${bomIx().byFg.size?`<div class="row" style="margin-bottom:8px"><input placeholder="검색 (제품 · 구성 품번 · 품명 · 차종) — 구성 품번으로 찾으면 그 품번이 들어간 제품만 남고 트리에 표시" value="${esc(msState.bq||'')}" oninput="msState.bq=this.value;deb(()=>{$('#msBom').innerHTML=bomTable()})" style="flex:1;min-width:200px"></div>`:''}
@@ -4125,6 +4130,16 @@ function bomIx(){
 }
 const bomQ=v=>v===''||v==null?'-':String(+(+v).toFixed(4));
 const bomFg=fg=>{const m=(db.bom.fg||{})[fg]||{},rs=bomIx().byFg.get(fg)||[];return {name:m.name||rs.find(r=>r.fgName)?.fgName||partByNo(fg)?.name||'',model:m.model||rs.find(r=>r.model)?.model||'',type:m.type||'',proc:m.proc||'',date:m.date||''}};
+// 부품 → BOM 사용 현황 (번호 표기 차이 무시): 들어가는 제품 · 자신이 제품(레벨 0)인지
+let _bpIx=null,_bpKey='';
+function bomPartUse(p){
+  const ix=bomIx();if(_bpKey!==_bomKey||!_bpIx){const m=new Map(),g=k=>{if(!m.has(k))m.set(k,{fgs:new Set(),fg:false});return m.get(k)};
+    ix.byPart.forEach((rs,pn)=>{const e=g(mkey(pn));rs.forEach(r=>{if(r.fgNo&&mkey(r.fgNo)!==mkey(pn))e.fgs.add(r.fgNo)})});
+    ix.byFg.forEach((rs,fg)=>{g(mkey(fg)).fg=true});_bpIx=m;_bpKey=_bomKey}
+  return _bpIx.get(mkey(p.partNo))||{fgs:new Set(),fg:false};
+}
+const bomUseN=p=>{const u=bomPartUse(p);return u.fgs.size+(u.fg?0.5:0)};
+function bomGo(pn){msState.bq=pn;const b=$('#msBom');if(!b)return;const i=b.parentElement.querySelector('input');if(i)i.value=pn;b.innerHTML=bomTable();b.parentElement.scrollIntoView({behavior:'smooth',block:'start'})}
 function bomImpactHTML(partNo,fgNo,pick){
   const pn=String(partNo||'').trim();if(!db.bom.rows.length||!pn)return '';
   const used=bomIx().byPart.get(pn)||[];
