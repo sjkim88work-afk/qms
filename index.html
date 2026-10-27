@@ -488,6 +488,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 .bomT{max-height:560px}.bomT table{min-width:760px}.bomT tr.broot td{background:#eef3f8;font-weight:600}.bomT tr.bhit td{background:#fff7e0}
 .btg{display:inline-block;width:16px;color:var(--sub);cursor:pointer;user-select:none}
 .b.due{background:var(--warnb);border-color:var(--warn);color:var(--warn);font-weight:600}
+.mich{background:#fff8e6}
 .roBar{background:#eef4fb;border-bottom:1px solid #c9dbef;color:#1d3b5c;padding:8px 22px;font-size:13px}
 </style>
 </head>
@@ -1193,7 +1194,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.1';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.2';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -3945,7 +3946,7 @@ function miAutoMap(kind,h){
   return m;
 }
 function openMasterImport(kind){
-  const C=MIMP[kind];mi={kind,rows:[],hdr:0,map:{},name:'',buyOnly:true};
+  const C=MIMP[kind];mi={kind,rows:[],hdr:0,map:{},name:'',buyOnly:true,off:new Set(),filt:''};
   openModal(C.title,`<div class="help">엑셀(.xlsx) · CSV 파일을 올리거나, 엑셀에서 범위를 복사해 붙여넣으세요. 제목행과 열은 자동으로 찾고, 틀린 열만 바꾸면 됩니다.<br>${C.help}</div>
   <div class="row" style="margin-top:10px"><label class="b p" style="cursor:pointer">파일 선택 (.xlsx / .csv)<input type="file" accept=".xlsx,.csv,.txt" style="display:none" onchange="miFile(this.files[0]);this.value=''"></label><span id="miSheet"></span><span id="miName" class="muted"></span>
     <span style="flex:1"></span><a class="lk" style="font-size:12px" onclick="miTemplate()">빈 양식 받기 (CSV)</a></div>
@@ -3984,29 +3985,66 @@ const supFind=v=>{v=String(v||'').trim();if(!v)return null;const sp=supSplit(v);
 const miCountry=v=>{v=String(v||'').trim();if(!v)return '';const m=v.match(/^([A-Za-z]{2})\b/);if(m)return m[1].toUpperCase();const k=Object.keys(COUNTRY).find(k=>v.includes(COUNTRY[k]));return k||''};
 const miRegion=v=>{v=String(v||'').trim().toUpperCase();if(!v)return '';if(/국외|해외|OUT|OVERSEA|FOREIGN|IMPORT/.test(v))return '국외';if(/국내|^IN\b|DOMESTIC|LOCAL/.test(v))return '국내';return ''};
 // 읽은 줄 → 등록 대상 (상태: 신규 · 갱신 · 건너뜀)
+// 같은 번호 판단: 대소문자 · 공백 · 하이픈 · 밑줄 · 점 차이는 같은 것으로 봄 (81842-BE110 = 81842 be110)
+const mkey=v=>String(v??'').normalize('NFKC').toUpperCase().replace(/[\s\-_.·‐-―]/g,'');
+const mname=v=>String(v??'').normalize('NFKC').toUpperCase().replace(/\s+/g,' ').trim();
+// 부품번호가 비슷한지: 길이가 같고 앞 5자리가 같으며 다른 글자가 2개 이하 (BE100 ↔ BE110)
+const mnear=(a,b)=>{a=mkey(a);b=mkey(b);if(!a||!b||a===b||a.length!==b.length||a.slice(0,5)!==b.slice(0,5))return false;let d=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i]&&++d>2)return false;return true};
+const MI_LBL={sup:{code:'코드',name:'협력사명',short:'약어',country:'국가',region:'국내 · 국외',address:'주소',items:'주요 품목',contact:'담당자',phone:'전화',email:'이메일'},
+  part:{name:'부품명',model:'차종',sup:'협력사',price:'단가',safety:'안전특성'}};
+function miDiff(kind,o,ex){
+  // 올린 값이 있고 기존 값과 다른 칸만 (빈 칸은 기존 값 유지라 변경 아님)
+  const D=[],add=(f,ov,nv)=>{if(nv!==''&&nv!=null&&String(ov??'').trim()!==String(nv).trim())D.push({f,o:ov??'',n:nv})};
+  if(kind==='sup'){
+    const pc=primaryOf(ex);
+    add('code',ex.code,o.code);if(o.name&&mname(o.name)!==mname(ex.name))add('name',ex.name,o.name);add('short',ex.short,o.short);
+    const cc=miCountry(o.country);add('country',ex.country,cc);add('region',ex.region,miRegion(o.region)||(cc&&!ex.region?countryRegion(cc):''));
+    add('address',ex.address,o.address);add('items',ex.items,o.items);
+    if(o.contact){add('contact',pc?pc.name:'',o.contact);const ph=pc?(pc.mobile||pc.phone):'';if(o.phone&&!(String(ph).replace(/\D/g,'')===o.phone.replace(/\D/g,'')||String(pc&&pc.phone||'').replace(/\D/g,'')===o.phone.replace(/\D/g,'')))D.push({f:'phone',o:ph,n:o.phone});add('email',pc?pc.email:'',o.email)}
+  }else{
+    if(o.name&&mname(o.name)!==mname(ex.name))add('name',ex.name,o.name);add('model',ex.model,o.model);
+    const sk=o.supCode||o.sup;if(sk){const sp=(o.supCode&&supFind(o.supCode))||(o.sup&&supFind(o.sup));if(!sp||sp.id!==ex.supplierId)D.push({f:'sup',o:supName(ex.supplierId),n:sp?sp.name:'(새 협력사) '+(o.sup||o.supCode)})}
+    const pc=miPrice(o.price,o.cur);if(!pc.bad&&pc.v!==''&&(+ex.price!==pc.v||curOf(ex)!==pc.c))D.push({f:'price',o:ex.price!==''&&ex.price!=null?fmtAmt(ex.price,curOf(ex)):'',n:fmtAmt(pc.v,pc.c)});
+    add('safety',ex.safety==='해당없음'?'':ex.safety,miSafety(o.safety));
+  }
+  return D;
+}
 function miData(){
   const m=mi.map,k=mi.kind,g=(r,f)=>m[f]!=null&&m[f]>=0?String(r[m[f]]??'').trim():'';
-  const out=new Map(),skip={nokey:0,make:0};
+  const out=new Map(),skip={nokey:0,make:0,dup:0};
+  if(k==='part'){const ix=new Map();db.parts.forEach(p=>{const q=mkey(p.partNo);if(q&&!ix.has(q))ix.set(q,p)});mi._pix=ix}
   mi.rows.slice(mi.hdr+1).forEach(r=>{
     if(!r.some(c=>c))return;
     const o={};MIMP[k].F.forEach(([f])=>o[f]=g(r,f));
     if(k==='sup'){
       if(!o.name){skip.nokey++;return}
-      const ex=(o.code&&db.suppliers.find(s=>s.code&&String(s.code)===o.code))||db.suppliers.find(s=>s.name===o.name);
-      out.set(o.name,{...o,st:ex?'갱신':'신규',ex});
+      const nk=mname(o.name);
+      const ex=(o.code&&db.suppliers.find(s=>s.code&&mkey(s.code)===mkey(o.code)))||db.suppliers.find(s=>mname(s.name)===nk)||(o.short&&db.suppliers.find(s=>s.short&&mname(s.short)===mname(o.short)))||null;
+      const key=o.code?'c:'+mkey(o.code):'n:'+nk;if(out.has(key)){skip.dup++;return}
+      out.set(key,{...o,key,ex});
     }else{
       if(!o.partNo){skip.nokey++;return}
       if(mi.buyOnly&&m.proc!=null&&o.proc&&!/구매|외주|buy|purchase|^p$/i.test(o.proc)){skip.make++;return}
-      const ex=partByNo(o.partNo),prev=out.get(o.partNo);
+      const key=mkey(o.partNo),ex=mi._pix.get(key)||null,prev=out.get(key);
       // BOM처럼 같은 부품번호가 여러 줄이면 빈 칸을 다른 줄 값으로 채움
       if(prev){MIMP.part.F.forEach(([f])=>{if(!prev[f]&&o[f])prev[f]=o[f]});return}
-      out.set(o.partNo,{...o,st:ex?'갱신':'신규',ex});
+      out.set(key,{...o,key,ex});
     }
   });
-  return {L:[...out.values()],skip};
+  const L=[...out.values()];
+  L.forEach(x=>{
+    if(x.ex){x.diff=miDiff(k,x,x.ex);x.st=x.diff.length?'갱신':'같음';x.sim=[]}
+    else{x.st='신규';x.diff=[];
+      // 비슷한 기존 항목 (번호만 조금 다르거나, 이름 · 차종이 같은 것) — 같은 것을 다른 번호로 또 만드는지 확인용
+      if(k==='part'){const nn=mname(x.name);x.sim=db.parts.filter(p=>!out.has(mkey(p.partNo))&&((nn&&mname(p.name)===nn&&(!x.model||!p.model||mname(p.model)===mname(x.model)))||(mnear(p.partNo,x.partNo)&&(!nn||!p.name||mname(p.name)===nn)))).slice(0,3)}
+      else{const nk=mname(x.name).replace(/\s|\(.*?\)|주식회사|㈜|CO\.?,?|LTD\.?|INC\.?/g,'');x.sim=nk.length>=2?db.suppliers.filter(s=>{const sk=mname(s.name).replace(/\s|\(.*?\)|주식회사|㈜|CO\.?,?|LTD\.?|INC\.?/g,'');return sk&&(sk.includes(nk)||nk.includes(sk))}).slice(0,3):[]}
+      if(x.sim.length)x.st='비슷함'}
+  });
+  return {L,skip};
 }
 function miRender(){
-  const C=MIMP[mi.kind],h=mi.rows[mi.hdr]||[],{L,skip}=miData(),n=L.filter(x=>x.st==='신규').length,u=L.length-n;
+  const C=MIMP[mi.kind],h=mi.rows[mi.hdr]||[],{L,skip}=miData(),cnt=st=>L.filter(x=>x.st===st).length,n=cnt('신규')+cnt('비슷함'),u=cnt('갱신'),same=cnt('같음'),sim=cnt('비슷함');
+  if(!mi.off)mi.off=new Set();if(!mi.filt)mi.filt='';
   const okMap=mi.map[C.key]!=null;
   const newSup=mi.kind==='part'?[...new Set(L.filter(x=>(x.supCode||x.sup)&&!((x.supCode&&supFind(x.supCode))||(x.sup&&supFind(x.sup)))).map(x=>x.sup||x.supCode))]:[];
   const cols=C.F.filter(([f])=>mi.map[f]!=null);
@@ -4015,14 +4053,31 @@ function miRender(){
   $('#miMap').innerHTML=`<div class="sec">열 연결 확인 <span class="muted" style="font-weight:normal;font-size:12px">${esc(mi.name)} · 제목행 ${mi.hdr+1}번째 줄 · 틀린 열만 바꿔주세요</span></div>
   <div class="fg">${C.F.map(([f,l,req])=>`<label>${l}${req?' *':''}<select onchange="if(this.value==='')delete mi.map.${f};else mi.map.${f}=+this.value;miRender()"><option value="">(없음)</option>${h.map((c,i)=>`<option value="${i}" ${mi.map[f]===i?'selected':''}>${esc(c||('열 '+(i+1)))}</option>`).join('')}</select></label>`).join('')}
    ${mi.kind==='part'&&mi.map.proc!=null?`<label class="full row" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" ${mi.buyOnly?'checked':''} onchange="mi.buyOnly=this.checked;miRender()"> 조달구분이 <b>구매</b>인 품목만 등록 (생산 · 반제품 · 완제품은 건너뜀)</label>`:''}</div>
-  <div class="${okMap&&L.length?'help':'banner'}" style="margin-top:8px">${!okMap?`<b>${C.F.find(f=>f[0]===C.key)[1]}</b> 열을 골라주세요.`:L.length?`<b>${L.length}</b>건을 읽었습니다 — 신규 <b>${n}</b> · 갱신 <b>${u}</b>${skip.make?` · 생산품 ${skip.make}줄 건너뜀`:''}${skip.nokey?` · ${C.F.find(f=>f[0]===C.key)[1]} 없는 ${skip.nokey}줄 건너뜀`:''}. 빈 칸은 기존 값을 그대로 둡니다.${newSup.length?`<br>기준정보에 없는 협력사 ${newSup.length}곳(${newSup.slice(0,5).map(esc).join(', ')}${newSup.length>5?' …':''})은 새로 등록합니다.`:''}${badCur.length?`<br>⚠ 쓸 수 없는 통화 ${badCur.map(esc).join(', ')} — 이 줄들은 단가를 넣지 않습니다 (쓸 수 있는 통화: ${CURS.join(' · ')}).`:''}${noFx.length?`<br>⚠ ${noFx.join(', ')} 환율이 설정에 없습니다 — 단가는 그대로 저장되고, 설정 → 불량 관리 → 환율을 넣으면 비용이 원화로 계산됩니다.`:''}`:'읽은 줄이 없습니다. 열 연결을 확인하세요.'}</div>
-  ${L.length?`<div class="tw" style="max-height:260px;margin-top:6px"><table class="sm mip"><thead><tr><th>상태</th>${cols.map(([,l])=>`<th>${esc(l.replace(/ \(.*\)/,''))}</th>`).join('')}</tr></thead><tbody>${L.slice(0,12).map(x=>`<tr><td><span class="bg ${x.st==='신규'?'ok':'inf'}">${x.st}</span></td>${cols.map(([f])=>`<td>${esc(f==='country'?(miCountry(x[f])||x[f]):f==='region'?(miRegion(x[f])||x[f]):f==='safety'?(miSafety(x[f])||x[f]):f==='price'?(x.price?(miPrice(x.price,x.cur).bad?esc(x.price)+' (통화 확인)':fmtAmt(miPrice(x.price,x.cur).v,miPrice(x.price,x.cur).c)):''):f==='cur'?(miCur(x.cur)||x.cur):x[f])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${L.length>12?`<div class="muted" style="font-size:12px;margin-top:4px">${L.length}건 중 12건 미리보기</div>`:''}`:''}`;
+  <div class="${okMap&&L.length?'help':'banner'}" style="margin-top:8px">${!okMap?`<b>${C.F.find(f=>f[0]===C.key)[1]}</b> 열을 골라주세요.`:L.length?`<b>${L.length}</b>건을 읽었습니다 — 신규 <b>${n}</b> · 갱신(바뀌는 칸 있음) <b>${u}</b> · 같음(바뀌는 것 없음) <b>${same}</b>${sim?` · <b style="color:var(--warn)">⚠ 비슷한 항목이 이미 있는 신규 ${sim}건 — 아래에서 확인 후 필요 없으면 체크를 빼세요</b>`:''}${skip.dup?` · 같은 ${C.key==='partNo'?'부품번호':'협력사'} 중복 ${skip.dup}줄 합침`:''}${skip.make?` · 생산품 ${skip.make}줄 건너뜀`:''}${skip.nokey?` · ${C.F.find(f=>f[0]===C.key)[1]} 없는 ${skip.nokey}줄 건너뜀`:''}. 빈 칸은 기존 값을 그대로 둡니다.${newSup.length?`<br>기준정보에 없는 협력사 ${newSup.length}곳(${newSup.slice(0,5).map(esc).join(', ')}${newSup.length>5?' …':''})은 새로 등록합니다.`:''}${badCur.length?`<br>⚠ 쓸 수 없는 통화 ${badCur.map(esc).join(', ')} — 이 줄들은 단가를 넣지 않습니다 (쓸 수 있는 통화: ${CURS.join(' · ')}).`:''}${noFx.length?`<br>⚠ ${noFx.join(', ')} 환율이 설정에 없습니다 — 단가는 그대로 저장되고, 설정 → 불량 관리 → 환율을 넣으면 비용이 원화로 계산됩니다.`:''}`:'읽은 줄이 없습니다. 열 연결을 확인하세요.'}</div>
+  ${L.length?miTable(L,cols,{n:cnt('신규'),u,same,sim}):''}`;
 }
+function miCell(f,x){return esc(f==='country'?(miCountry(x[f])||x[f]):f==='region'?(miRegion(x[f])||x[f]):f==='safety'?(miSafety(x[f])||x[f]):f==='price'?(x.price?(miPrice(x.price,x.cur).bad?x.price+' (통화 확인)':fmtAmt(miPrice(x.price,x.cur).v,miPrice(x.price,x.cur).c)):''):f==='cur'?(miCur(x.cur)||x.cur):x[f])}
+const MI_ST={'신규':'ok','갱신':'inf','같음':'mut','비슷함':'warn'};
+function miTable(L,cols,c){
+  const F=mi.filt,V=F?L.filter(x=>x.st===F):L,LB=MI_LBL[mi.kind],show=V.slice(0,400),off=mi.off;
+  const chip=(k,l,nn)=>nn||!k?`<button type="button" class="b s ${F===k?'p':''}" onclick="mi.filt='${k}';miRender()">${l} ${nn}</button>`:'';
+  const dcell=(x,f)=>{const d=x.diff.find(z=>z.f===f||(f==='supCode'&&z.f==='sup')||(f==='cur'&&z.f==='price'));
+    if(d&&!(f==='supCode'||f==='cur'))return `<td class="mich" title="기존: ${esc(d.o||'(빈칸)')}"><span class="muted"><s>${esc(d.o||'빈칸')}</s> →</span> <b>${esc(d.n)}</b></td>`;
+    return `<td${x.ex&&!d?' class="muted"':''}>${miCell(f,x)}</td>`};
+  const extraD=x=>{const shown=new Set(cols.map(([f])=>f==='supCode'?'sup':f==='cur'?'price':f));const o=x.diff.filter(d=>!shown.has(d.f));return o.length?`<div class="mich" style="font-size:11.5px">${o.map(d=>`${esc(LB[d.f]||d.f)}: <s class="muted">${esc(d.o||'빈칸')}</s> → <b>${esc(d.n)}</b>`).join(' · ')}</div>`:''};
+  const simH=x=>x.sim&&x.sim.length?`<div style="font-size:11.5px;color:var(--warn)">⚠ 비슷한 기존 ${mi.kind==='part'?'부품':'협력사'}: ${x.sim.map(p=>mi.kind==='part'?`<b>${esc(p.partNo)}</b> ${esc(p.name||'')}${p.model?' · '+esc(p.model):''}${p.supplierId?' · '+esc(supName(p.supplierId)):''}`:`<b>${esc(p.name)}</b>${p.code?' ('+esc(p.code)+')':''}`).join(' / ')}</div>`:'';
+  return `<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${chip('','전체',L.length)}${chip('신규','신규',c.n)}${chip('갱신','갱신',c.u)}${chip('같음','같음',c.same)}${chip('비슷함','⚠ 비슷함',c.sim)}<span style="flex:1"></span><span class="muted" style="font-size:12px">체크를 뺀 줄은 등록하지 않습니다${off.size?` · 제외 <b>${off.size}</b>건`:''}</span></div>
+  <div class="tw" style="max-height:340px;margin-top:6px"><table class="sm mip"><thead><tr><th style="width:26px"><input type="checkbox" title="보이는 줄 모두" ${V.every(x=>!off.has(x.key))?'checked':''} onchange="miOffAll(this.checked)"></th><th>상태</th>${cols.map(([,l])=>`<th>${esc(l.replace(/ \(.*\)/,''))}</th>`).join('')}</tr></thead><tbody>${show.map(x=>`<tr${off.has(x.key)?' style="opacity:.45"':''}><td><input type="checkbox" ${off.has(x.key)?'':'checked'} onchange="miOff('${esc(x.key).replace(/'/g,"\\'")}',!this.checked)"></td><td class="nw"><span class="bg ${MI_ST[x.st]}">${x.st==='갱신'?'갱신 '+x.diff.length:x.st}</span></td>${cols.map(([f],i)=>i===0?`<td>${miCell(f,x)}${simH(x)}${extraD(x)}</td>`:dcell(x,f)).join('')}</tr>`).join('')}</tbody></table></div>${V.length>show.length?`<div class="muted" style="font-size:12px;margin-top:4px">${V.length}건 중 ${show.length}건 표시 — 위 버튼으로 골라 보세요</div>`:''}<div class="muted" style="font-size:12px;margin-top:4px"><b>갱신</b>: <s>기존</s> → <b>새 값</b>으로 바뀌는 칸 · <b>같음</b>: 이미 같은 내용(그대로 둠) · 같은 번호 판단은 대소문자 · 공백 · 하이픈 차이를 무시합니다.</div>`;
+}
+function miOff(k,v){if(!mi.off)mi.off=new Set();v?mi.off.add(k):mi.off.delete(k);miRender()}
+function miOffAll(on){const {L}=miData(),V=mi.filt?L.filter(x=>x.st===mi.filt):L;V.forEach(x=>on?mi.off.delete(x.key):mi.off.add(x.key));miRender()}
 function miApply(){
   const C=MIMP[mi.kind],{L}=miData();
   if(mi.map[C.key]==null||!L.length){toast('등록할 내용이 없습니다 — 파일을 고르거나 붙여넣고 열 연결을 확인하세요');return}
-  const snap={db:JSON.stringify(db),ph:[]};let a=0,u=0,ns=0;
+  const snap={db:JSON.stringify(db),ph:[]};let a=0,u=0,ns=0,same=0,off=0;
   L.forEach(o=>{
+    if(mi.off&&mi.off.has(o.key)){off++;return}
+    if(o.st==='같음'){same++;return}
     if(mi.kind==='sup'){
       let s=o.ex;if(s)u++;else{s={id:uid(),name:o.name,contacts:[],contactLog:[]};db.suppliers.push(s);a++}ensureContacts(s);
       if(o.name&&s.name!==o.name&&!db.suppliers.some(x=>x!==s&&x.name===o.name))s.name=o.name;
@@ -4044,7 +4099,7 @@ function miApply(){
     }
   });
   save();closeModal(true);render();
-  toast(`${mi.kind==='sup'?'협력사':'부품'} 신규 ${a}건 · 갱신 ${u}건${ns?` · 협력사 ${ns}곳 추가`:''}`);
+  toast(`${mi.kind==='sup'?'협력사':'부품'} 신규 ${a}건 · 갱신 ${u}건${same?` · 같음 ${same}건(그대로)`:''}${off?` · 제외 ${off}건`:''}${ns?` · 협력사 ${ns}곳 추가`:''}`);
   if(a||u)offerUndo(snap,`${C.title}: 신규 ${a}건 · 갱신 ${u}건`);
 }
 
