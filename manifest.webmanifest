@@ -1,7 +1,7 @@
 {
-  "name": "개인 QMS",
-  "short_name": "QMS",
-  "description": "불량 · 귀책 조사 · NCR/8D · RCA · COPQ를 관리하는 개인 품질관리 앱",
+  "name": "QIS",
+  "short_name": "QIS",
+  "description": "QIS (Quality Information System) — 불량 · 귀책 조사 · NCR/8D · RCA · COPQ를 관리하는 개인 품질관리 앱",
   "id": "./",
   "start_url": "./",
   "scope": "./",

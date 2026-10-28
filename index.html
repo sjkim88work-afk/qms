@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>개인 QMS</title>
+<title>QIS</title>
 <!-- 설치형 앱(PWA): 웹 주소(https)로 열었을 때 ‘앱으로 설치’ · 오프라인 실행. 파일로 직접 열면 지금처럼 동작 -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1d4f73">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="application-name" content="개인 QMS">
+<meta name="application-name" content="QIS">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -343,7 +343,7 @@ body{font-family:var(--f-body);font-size:13.5px;line-height:1.5}
 @media screen{
   header{background:var(--card);color:var(--ink);border-bottom:1px solid var(--line);padding:12px 22px;gap:14px}
   header h1{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
-  header h1::before{content:"Quality Management System";display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);font-weight:600;margin-bottom:2px}
+  header h1::before{content:"QIS · Quality Information System";display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);font-weight:600;margin-bottom:2px}
   header small{opacity:1;color:var(--sub);font-size:12px}
   .brandlogo{background:transparent;padding:0;border-radius:0}
   nav{background:var(--card);padding:0 16px;gap:4px;position:sticky;top:0;z-index:40}
@@ -496,7 +496,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 <body>
 <header>
   <span id="brand"></span>
-  <h1 id="appTitle">개인 QMS</h1>
+  <h1 id="appTitle">QIS</h1>
   <small id="saveInfo"></small>
   <span class="sp"></span>
   <small id="linkInfo"></small>
@@ -1195,12 +1195,12 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.4';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.5';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
-  $('#appTitle').innerHTML=`${esc(S.company?S.company+' 품질관리':'개인 QMS')} <span style="font:600 11px/1 var(--f-mono,monospace);color:var(--sub);vertical-align:middle">ver ${APP_VER}</span>`;
-  document.title=(RO?'[읽기 전용] ':'')+(S.company?S.company+' QMS':'개인 QMS');
+  $('#appTitle').innerHTML=`${esc(S.company?S.company+' 품질관리':'QIS')} <span style="font:600 11px/1 var(--f-mono,monospace);color:var(--sub);vertical-align:middle">ver ${APP_VER}</span>`;
+  document.title=(RO?'[읽기 전용] ':'')+(S.company?S.company+' 품질관리':'QIS');  // 설치 앱 창 제목: ‘QIS - 회사 품질관리’
   $('#printHead').innerHTML=`${S.logo?`<img src="${S.logo}" alt="">`:''}<div class="t"><b>${esc(S.company||'품질관리')} — ${esc(tab)}${state.tab==='dash'?' ('+esc(state.dashMonth)+')':''}</b><span>${esc(S.dept)}</span></div><div class="d">출력일 ${today()}</div>`;
 }
 function logoHead(){const S=db.settings;return (S.logo||S.company)?`<div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid #14213d;padding-bottom:8px;margin-bottom:12px">${S.logo?`<img src="${S.logo}" style="max-height:44px;max-width:180px;object-fit:contain">`:''}<div style="flex:1"><b style="font-size:15px">${esc(S.company)}</b><br><span style="font-size:11px;color:#555">${esc(S.dept)}</span></div><div style="font-size:11px;color:#555">출력일 ${today()}</div></div>`:''}
@@ -1513,7 +1513,7 @@ function renderDash(){
   ds.forEach(d=>{const s=supName(d.supplierId)||'(미지정)';supMap[s]=(supMap[s]||0)+num(d.qty);typeMap[d.type||'(미지정)']=(typeMap[d.type||'(미지정)']||0)+1});
   let banner='';
   const total=COLLS.reduce((a,c)=>a+db[c].length,0);
-  if(!total&&/^https?:$/.test(location.protocol))banner=`<div class="banner">📦 <b>파일(개인 QMS.html)로 쓰던 데이터가 있나요?</b> 그 파일을 열어 화면 위 <b>백업</b>을 누른 뒤, 여기서 <button class="b s p" onclick="pickImport('replace')">백업 파일로 복원</button>하면 사진까지 그대로 옮겨집니다. <span class="muted">처음 쓰는 경우에는 <b>기준정보</b>에서 협력사·부품을 등록하세요.</span></div>`;
+  if(!total&&/^https?:$/.test(location.protocol))banner=`<div class="banner">📦 <b>예전 HTML 파일로 쓰던 데이터가 있나요?</b> 그 파일을 열어 화면 위 <b>백업</b>을 누른 뒤, 여기서 <button class="b s p" onclick="pickImport('replace')">백업 파일로 복원</button>하면 사진까지 그대로 옮겨집니다. <span class="muted">처음 쓰는 경우에는 <b>기준정보</b>에서 협력사·부품을 등록하세요.</span></div>`;
   else if(!total)banner=`<div class="banner">데이터가 비어 있습니다. <b>기준정보</b>에서 협력사·부품을 등록하거나(엑셀 붙여넣기 지원), <b>불량 관리</b>에서 불량을 등록하세요. 기존 백업 파일이 있으면 <a class="lk" onclick="state.setTab='backup';go('data')">설정·백업</a>에서 복원할 수 있습니다.</div>`;
   const li=(arr,fn)=>arr.length?arr.slice(0,8).map(fn).join('')+(arr.length>8?`<li class="muted">외 ${arr.length-8}건</li>`:''):'';
   const own=x=>!czOwns(x.n,'ncr'),ownD=d=>!czOwns(d,'defect');
@@ -5901,7 +5901,7 @@ async function a3Report(kind,id){
     ${sec(7,'표준화 · 후속 (Follow-up)',pre(fol))}
     <div class="two">${sec('₩','실패비용 · 구상',costTxt)}${sec('⏱','주요 경과',tl?`<table class="tl">${tl}</table>`:'기록 없음')}</div>
   </div></div>
-  <div class="ft"><span>${esc(S.company||'')} ${esc(S.dept||'')} · 개인 QMS 자동 작성</span><span>불량 ${ds.length}건 기준${n?' · '+esc(n.no):''}${c?' · '+esc(c.CaseNo):''}</span></div>
+  <div class="ft"><span>${esc(S.company||'')} ${esc(S.dept||'')} · QIS 자동 작성</span><span>불량 ${ds.length}건 기준${n?' · '+esc(n.no):''}${c?' · '+esc(c.CaseNo):''}</span></div>
   </div></body></html>`;
   reportShow(w,html,`A3보고서_${(c&&c.CaseNo)||(n&&n.no)||(d&&d.date)||today()}.html`);
 }
@@ -5963,7 +5963,7 @@ const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||
 let pwaPrompt=null;
 if(!RO&&isWebApp&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(e=>console.warn('서비스 워커 등록 실패',e));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaPrompt=e;const b=$('#hdrInstall');if(b&&!isStandalone())b.style.display=''});
-window.addEventListener('appinstalled',()=>{pwaPrompt=null;const b=$('#hdrInstall');if(b)b.style.display='none';toast('앱으로 설치했습니다 — 바탕화면 · 시작 메뉴의 ‘개인 QMS’로 여세요')});
+window.addEventListener('appinstalled',()=>{pwaPrompt=null;const b=$('#hdrInstall');if(b)b.style.display='none';toast('앱으로 설치했습니다 — 바탕화면 · 시작 메뉴의 ‘QIS’로 여세요')});
 async function pwaInstall(){
   if(!pwaPrompt){toast('브라우저 메뉴(⋯) → 앱 → ‘이 사이트를 앱으로 설치’를 누르세요');return}
   pwaPrompt.prompt();try{await pwaPrompt.userChoice}catch(e){}pwaPrompt=null;$('#hdrInstall').style.display='none';
