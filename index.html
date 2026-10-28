@@ -1200,7 +1200,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.4.4';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4.5';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -2441,7 +2441,7 @@ async function delDefect(id){
   const L=defLinks(d0),ch=await delDefectDialog(d0,L);if(!ch)return;
   const delN=ch.ncr&&L.ncr&&L.ncr.others===0?L.ncr.n:null;
   const delC=L.cases.filter((x,k)=>ch.cases[k]&&x.others===0).map(x=>x.c);
-  const ph=[...(d0.photos||[]),...logPhotoIds(d0.logs),...(delN?[...logPhotoIds(delN.logs),...(delN.concDocs||[]),...(delN.replyDocs||[])]:[])];
+  const ph=[...(d0.photos||[]),...logPhotoIds(d0.logs),...(delN?[...logPhotoIds(delN.logs),...ncrDocIds(delN)]:[])];
   const snap=await takeSnap(ph);
   // NCR: 삭제 또는 연결 해제
   if(delN){czUnlinkNcrAll(delN.id);db.defects.forEach(x=>{if(x.ncrId===delN.id&&x.id!==id){x.ncrId='';touch(x)}});removeRec('ncrs',delN.id)}
@@ -2722,7 +2722,7 @@ function filteredNcrs(){
   return msState.ncr&&msState.ncr.k?msSort(L,msState.ncr,NCR_G):L;
 }
 function ncrNotifyCell(n){
-  if(n.notifyDate)return `<span class="nwi" title="협력사 통보일">${esc(n.notifyDate)}</span>${n.notifyMethod?`<br><span class="muted" style="font-size:11.5px">${esc(n.notifyMethod)}</span>`:''}${n.requestDate&&n.requestDate!==n.notifyDate&&n.reqType!=='단순 통보'?`<br><span class="muted" style="font-size:11.5px">대책 요청 ${esc(n.requestDate)}</span>`:''}`;
+  if(n.notifyDate)return `<span class="nwi" title="협력사 통보일">${esc(n.notifyDate)}</span>${(n.noticeDocs||[]).length?` <span class="bg inf" title="발송한 통보서 파일 ${(n.noticeDocs||[]).length}개">📎 ${(n.noticeDocs||[]).length}</span>`:''}${n.notifyMethod?`<br><span class="muted" style="font-size:11.5px">${esc(n.notifyMethod)}</span>`:''}${n.requestDate&&n.requestDate!==n.notifyDate&&n.reqType!=='단순 통보'?`<br><span class="muted" style="font-size:11.5px">대책 요청 ${esc(n.requestDate)}</span>`:''}`;
   if(ncrNotified(n))return `<span class="bg ok">통보</span> <span class="muted">(일자 미기록)</span>`;
   return `<span class="bg ${notifyLate(n)?'bad':'warn'}">${notifyLate(n)?'통보 지연':'미통보'}</span><br><button class="b s p noprint" style="margin-top:3px" onclick="ncrQuickNotify('${n.id}')" title="오늘 날짜로 통보 완료 처리">통보 완료</button>`;
 }
@@ -2835,6 +2835,8 @@ function editNcr(id,preset,mode){
     <label>통보일<input type="date" name="notifyDate" value="${esc(n.notifyDate||'')}" data-prev="${esc(n.notifyDate||'')}" onchange="ncrNotify('date')"></label>
     <label>통보 방법<select name="notifyMethod">${opts(NOTIFY_METHODS,n.notifyMethod,true)}</select></label>
   </div>
+  <div class="muted" style="font-size:12px;margin:8px 0 4px">발송한 통보서 파일 — 보낸 PDF · 메일(.msg) · 엑셀 등 (파일당 20MB, 끌어다 놓아도 됨)</div>
+  <div id="noticeBox" class="docbox"></div>
   <div class="sec">대응 수준 · 회신 기한</div>
   <div class="fg">
     <label>요구 회신 유형 (대응 수준)<select name="reqType" onchange="mfDirty=true;applyReqType(true)">${opts(REQ_TYPES,n.reqType||REQ_TYPES[0])}</select></label>
@@ -2901,47 +2903,52 @@ function editNcr(id,preset,mode){
   openModal(id?`NCR ${n.no||''}`:'NCR 발행',body,btns);
   if(id){const st=ncrStatus(n);if(st==='종결')$('#mt').insertAdjacentHTML('beforeend','<span class="qstamp">종결</span>');else if(ncrEsc(n))$('#mt').insertAdjacentHTML('beforeend','<span class="qstamp esc">에스컬레이션</span>')}
   ncrCurId=id||null;ncrCurNo=n.no||'';ncrMode(mode||ncrModeDefault(n,id));
-  concInit(n.concDocs||[]);rdInit(n.replyDocs||[]);
+  concInit(n.concDocs||[]);dkInit('notice',n.noticeDocs||[]);dkInit('reply',n.replyDocs||[]);
   renderStock();renderContain();renderVLots();renderEval();applyBasis(false);tlInit('ncr',Object.assign({},n,{defectIds:curLinks,logs:n.logs||[]}));refreshLinks();applyReqType(false);bomNcr();
 }
 let curNcrSev=null,ncrTabCur='a';
-let curConc=[],curConcDel=[],curRd=[],curRdDel=[];
-// 협력사 대책서 파일 (NCR.replyDocs) — 특채 문서와 같은 저장소(사진 · 첨부)에 보관
-const RD_ACCEPT='.pdf,.ppt,.pptx,.xls,.xlsx,.xlsm,.csv,.doc,.docx,.hwp,.hwpx,.zip,image/*';
-function rdInit(ids){
-  curRd=[];curRdDel=[];rdRender();
-  if((ids||[]).length)photoGetMany(ids).then(rs=>{curRd=[...rs.map(r=>({...r,isNew:false})),...curRd.filter(x=>x.isNew)];rdRender()}).catch(()=>{});
-  const b=$('#replyBox');if(!b)return;
+let curConc=[],curConcDel=[];
+// NCR 첨부 파일 상자: 발송한 통보서(noticeDocs) · 받은 대책서(replyDocs) — 특채 문서와 같은 저장소(사진 · 첨부)에 보관
+const RD_ACCEPT='.pdf,.ppt,.pptx,.xls,.xlsx,.xlsm,.csv,.doc,.docx,.hwp,.hwpx,.zip,.msg,.eml,image/*';
+const DOCK={notice:{field:'noticeDocs',box:'noticeBox',add:'+ 발송한 통보서 첨부',L:[],D:[]},reply:{field:'replyDocs',box:'replyBox',add:'+ 대책서 파일 첨부',L:[],D:[]}};
+function dkInit(k,ids){
+  const K=DOCK[k];K.L=[];K.D=[];dkRender(k);
+  if((ids||[]).length)photoGetMany(ids).then(rs=>{K.L=[...rs.map(r=>({...r,isNew:false})),...K.L.filter(x=>x.isNew)];dkRender(k)}).catch(()=>{});
+  const b=$('#'+K.box);if(!b)return;
   b.addEventListener('dragover',e=>{e.preventDefault();b.classList.add('drag')});
   b.addEventListener('dragleave',()=>b.classList.remove('drag'));
-  b.addEventListener('drop',e=>{e.preventDefault();b.classList.remove('drag');rdAdd([...e.dataTransfer.files])});
+  b.addEventListener('drop',e=>{e.preventDefault();b.classList.remove('drag');dkAdd(k,[...e.dataTransfer.files])});
 }
-function rdRender(){
-  const b=$('#replyBox');if(!b)return;
-  b.innerHTML=curRd.map((r,i)=>`<div class="doc"><span class="dk">${docIcon(r)}</span><div class="dn"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="muted">${r.size?fmtBytes(r.size)+' · ':''}${esc((r.createdAt||'').slice(0,10))}${r.isNew?' · 저장 전':''}${r.pending?' · 다른 PC에서 아직 받지 못함':''}</span></div>
-    <button type="button" class="b s" onclick="rdOpen(${i})" ${r.pending?'disabled':''}>열기</button><button type="button" class="b s d" onclick="rdRemove(${i})">빼기</button></div>`).join('')
-    +`<label class="doc add"><input type="file" multiple accept="${RD_ACCEPT}" style="display:none" onchange="rdAdd([...this.files]);this.value=''">+ 대책서 파일 첨부</label>`;
+function dkRender(k){
+  const K=DOCK[k],b=$('#'+K.box);if(!b)return;
+  b.innerHTML=K.L.map((r,i)=>`<div class="doc"><span class="dk">${docIcon(r)}</span><div class="dn"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="muted">${r.size?fmtBytes(r.size)+' · ':''}${esc((r.createdAt||'').slice(0,10))}${r.isNew?' · 저장 전':''}${r.pending?' · 다른 PC에서 아직 받지 못함':''}</span></div>
+    <button type="button" class="b s" onclick="dkOpen('${k}',${i})" ${r.pending?'disabled':''}>열기</button><button type="button" class="b s d" onclick="dkRemove('${k}',${i})">빼기</button></div>`).join('')
+    +`<label class="doc add"><input type="file" multiple accept="${RD_ACCEPT}" style="display:none" onchange="dkAdd('${k}',[...this.files]);this.value=''">${K.add}</label>`;
 }
-async function rdAdd(files){
+async function dkAdd(k,files){
+  const K=DOCK[k];
   for(const f of files){
     if(f.size>20*1048576){toast(`${f.name}: 20MB를 넘는 파일은 첨부할 수 없습니다`);continue}
     try{const data=await fileToURL(f);if(!isFileURL(data)){toast(`${f.name}: 파일을 읽지 못했습니다`);continue}
-      curRd.push({id:uid(),kind:'doc',name:f.name,mime:f.type||'',size:f.size,data,thumb:'',createdAt:now(),isNew:true})}
+      K.L.push({id:uid(),kind:'doc',name:f.name,mime:f.type||'',size:f.size,data,thumb:'',createdAt:now(),isNew:true})}
     catch(e){toast(`${f.name}: 파일을 읽지 못했습니다`)}
   }
-  mfDirty=true;rdRender();
-  // 파일을 받았는데 회신일이 비어 있으면 오늘로 (고칠 수 있음)
-  const f=$('#mf');if(f&&f.replyDate&&!f.replyDate.value&&curRd.some(r=>r.isNew)){f.replyDate.value=today();toast('대책서 회신일을 오늘로 넣었습니다 — 실제 받은 날짜로 고칠 수 있습니다')}
+  mfDirty=true;dkRender(k);
+  const fm=$('#mf');if(!fm||!K.L.some(r=>r.isNew))return;
+  // 날짜가 비어 있으면 오늘로 (고칠 수 있음): 통보서 → 통보일(통보 완료), 대책서 → 회신일
+  if(k==='notice'&&fm.notifyDate&&!fm.notifyDate.value){fm.notifyDate.value=today();ncrNotify('date');toast('통보일을 오늘로 넣었습니다 (통보 완료) — 실제 보낸 날짜로 고칠 수 있습니다')}
+  if(k==='reply'&&fm.replyDate&&!fm.replyDate.value){fm.replyDate.value=today();toast('대책서 회신일을 오늘로 넣었습니다 — 실제 받은 날짜로 고칠 수 있습니다')}
 }
-function rdRemove(i){const r=curRd[i];if(!r)return;if(!r.isNew)curRdDel.push(r.id);curRd.splice(i,1);mfDirty=true;rdRender()}
-function rdOpen(i){return docOpenRec(curRd[i])}
-function rdCommit(n){
-  const add=curRd.filter(r=>r.isNew).map(({isNew,...r})=>r);
-  if(add.length)photoPut(add).then(()=>{photoStr=null;if(photoDir)syncPhotoFiles(false)}).catch(e=>toast('대책서 파일 저장 실패: '+e.message));
-  if(curRdDel.length){photoDel(curRdDel).catch(()=>{});curRdDel.forEach(i=>db.deleted.push({id:i,at:now()}));photoStr=null}
-  n.replyDocs=curRd.map(r=>r.id);if(!n.replyDocs.length)delete n.replyDocs;
-  curRd.forEach(r=>r.isNew=false);curRdDel=[];
+function dkRemove(k,i){const K=DOCK[k],r=K.L[i];if(!r)return;if(!r.isNew)K.D.push(r.id);K.L.splice(i,1);mfDirty=true;dkRender(k)}
+function dkOpen(k,i){return docOpenRec(DOCK[k].L[i])}
+function dkCommit(k,n){
+  const K=DOCK[k],add=K.L.filter(r=>r.isNew).map(({isNew,...r})=>r);
+  if(add.length)photoPut(add).then(()=>{photoStr=null;if(photoDir)syncPhotoFiles(false)}).catch(e=>toast('첨부 파일 저장 실패: '+e.message));
+  if(K.D.length){photoDel(K.D).catch(()=>{});K.D.forEach(i=>db.deleted.push({id:i,at:now()}));photoStr=null}
+  n[K.field]=K.L.map(r=>r.id);if(!n[K.field].length)delete n[K.field];
+  K.L.forEach(r=>r.isNew=false);K.D=[];
 }
+const ncrDocIds=n=>[...(n.concDocs||[]),...(n.noticeDocs||[]),...(n.replyDocs||[])];
 const fmtBytes=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB';
 const docIcon=r=>/pdf/i.test(r.mime||r.name)?'PDF':/sheet|excel|\.xls/i.test((r.mime||'')+r.name)?'XLS':/word|\.doc/i.test((r.mime||'')+r.name)?'DOC':/presentation|powerpoint|\.ppt/i.test((r.mime||'')+r.name)?'PPT':/image/i.test(r.mime||'')?'IMG':/hwp/i.test(r.name)?'HWP':'FILE';
 function concInit(ids){
@@ -3301,7 +3308,7 @@ function saveNcr(id){
   old.filter(i=>!curLinks.includes(i)).forEach(i=>{const d=db.defects.find(x=>x.id===i);if(d&&d.ncrId===n.id){d.ncrId='';touch(d)}});
   curLinks.forEach(i=>{const d=db.defects.find(x=>x.id===i);if(d&&d.ncrId!==n.id){d.ncrId=n.id;touch(d)}});
   if(tl.kind==='ncr'){const r=tlCommit();n.logs=r.logs}
-  n.defectIds=[...curLinks];n.stock=curStock.filter(r=>r.loc||r.stocked||r.ng);concCommit(n);rdCommit(n);n.contain=curContain.filter(r=>r.target||r.sorted||r.ng||r.done);n.vlots=curVLots.filter(r=>r.lot||r.date||r.insp||r.ng);n.photoExcl=[...curExcl];
+  n.defectIds=[...curLinks];n.stock=curStock.filter(r=>r.loc||r.stocked||r.ng);concCommit(n);dkCommit('notice',n);dkCommit('reply',n);n.contain=curContain.filter(r=>r.target||r.sorted||r.ng||r.done);n.vlots=curVLots.filter(r=>r.lot||r.date||r.insp||r.ng);n.photoExcl=[...curExcl];
   n.evals=curEvals.map(e=>({...e,score:evalScore(e),verdict:evalVerdict(e)}));
   const le=latestEval(n);if(le){const pv=o.validity,nv=le.verdict==='승인'?'적정':'보완요청';if(pv&&pv!==nv)setTimeout(()=>toast(`대책서 평가 결과(${le.verdict})에 따라 타당성을 ‘${nv}’(으)로 맞췄습니다`),400);n.validity=nv;n.evalScore=le.score;n.evalVerdict=le.verdict}else{delete n.evalScore;delete n.evalVerdict}
   if(n.validity==='적정'){if(!n.approvedDate)n.approvedDate=(le&&le.verdict==='승인'&&le.date)||n.replyDate||today()}else delete n.approvedDate;
@@ -3313,10 +3320,10 @@ async function delNcr(id){
   const n=db.ncrs.find(x=>x.id===id);if(!n)return;
   const filled=D8.filter(([k])=>String(n[k]||'').trim()).length;
   if(!await askConfirm({title:`${n.no}을(를) 삭제할까요?`,items:[`${esc(supName(n.supplierId))} · ${esc(n.partNo)} ${esc(n.partName)}`,`${esc(n.title)}`,`상태: ${ncrStatus(n)}${filled?` · 8D 작성 항목 ${filled}개 함께 삭제`:''}`,`연결된 불량 ${(n.defectIds||[]).length}건은 유지 (연결만 해제)`],note:'삭제 후 10초 안에 되돌릴 수 있습니다.'}))return;
-  const snap=await takeSnap([...(n.concDocs||[]),...(n.replyDocs||[])]);
+  const snap=await takeSnap(ncrDocIds(n));
   db.defects.forEach(d=>{if(d.ncrId===id){d.ncrId='';touch(d)}});
   if(state.tab!=='ncr')closeModal(true);
-  {const docs=[...(n.concDocs||[]),...(n.replyDocs||[])];if(docs.length){photoDel(docs).catch(()=>{});docs.forEach(i=>db.deleted.push({id:i,at:now()}));photoStr=null}}
+  {const docs=ncrDocIds(n);if(docs.length){photoDel(docs).catch(()=>{});docs.forEach(i=>db.deleted.push({id:i,at:now()}));photoStr=null}}
   czUnlinkNcrAll(id);removeRec('ncrs',id);save();render();offerUndo(snap,`${n.no}을(를) 삭제했습니다`);
 }
 async function print8D(id){
@@ -3324,7 +3331,7 @@ async function print8D(id){
   const ds=(n.defectIds||[]).map(i=>db.defects.find(d=>d.id===i)).filter(Boolean);
   const w=reportWin();
   let phs=[];try{phs=await photoGetMany(ds.flatMap(d=>d.photos||[]))}catch(e){}
-  let rds=[];try{rds=await photoGetMany(n.replyDocs||[])}catch(e){}
+  let rds=[],nds=[];try{rds=await photoGetMany(n.replyDocs||[]);nds=await photoGetMany(n.noticeDocs||[])}catch(e){}
   const html=(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(n.no)} 8D</title><style>body{font-family:'Malgun Gothic',sans-serif;font-size:12px;margin:24px;color:#111}table{width:100%;border-collapse:collapse;margin-bottom:12px}td,th{border:1px solid #555;padding:6px;vertical-align:top}th{background:#eef1f5;width:17%;text-align:left}h1{font-size:18px;margin:0 0 12px}.sm td,.sm th{font-size:11px;width:auto}.pg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.pg figure{margin:0;border:1px solid #999;padding:4px;break-inside:avoid}.pg img{width:100%;max-height:220px;object-fit:contain}.pg figcaption{font-size:11px;text-align:center;margin-top:3px}</style></head><body>
   ${logoHead()}<h1>8D Report — ${esc(n.no)}</h1>
   <table><tr><th>협력사</th><td>${esc(supName(n.supplierId))}</td><th>발행일</th><td>${esc(n.issueDate)}</td></tr>
@@ -3332,7 +3339,7 @@ async function print8D(id){
   <tr><th>제목</th><td colspan="3">${esc(n.title)}</td></tr>${n.basis==='공정 감사'?`<tr><th>발행 근거</th><td colspan="3">공정 감사 — ${esc(n.auditDate)} ${esc(n.auditType)} ${esc(n.auditRef)}${n.finding?'<br>'+esc(n.finding):''}</td></tr>`:''}${n.basis==='PPM 초과'?`<tr><th>발행 근거</th><td colspan="3">PPM 초과 — ${esc(n.ppmFrom)}~${esc(n.ppmTo)} 실적 ${esc(n.ppmVal)} PPM / 목표 ${esc(n.ppmTarget)} PPM</td></tr>`:''}${n.basis==='기타'?`<tr><th>발행 근거</th><td colspan="3">기타</td></tr>`:''}
   <tr><th>대책 요청일</th><td>${esc(n.requestDate)}</td><th>회신 기한 / 회신일</th><td>${esc(n.dueDate)} / ${esc(n.replyDate)}</td></tr>
   <tr><th>유효성 기한</th><td>${esc(n.verifyDue)}</td><th>검증일 / 결과</th><td>${esc(n.verifyDate)} / ${esc(n.verifyResult)}</td></tr>
-  <tr><th>상태</th><td>${ncrStatus(n)}${ncrRejects(n)?` · 보완요청·반려 ${ncrRejects(n)}회`:''}</td><th>담당</th><td>${esc(n.owner)}</td></tr>${rds.length?`<tr><th>협력사 대책서 파일</th><td colspan="3">${rds.map(r=>esc(r.name)).join(' · ')}</td></tr>`:''}${n.reqType!=='단순 통보'?`<tr><th>D3 봉쇄 기한 / 회신일</th><td>${esc(n.d3Due)} / ${esc(n.d3Date)}</td><th>클린 포인트</th><td>${esc(n.cleanPoint)}${n.cleanMark?'<br>'+esc(n.cleanMark):''}</td></tr>`:''}${n.concession&&n.concession!=='없음'?`<tr><th>특채</th><td colspan="3">${esc(n.concession)}${(n.concDocs||[]).length?` · 첨부 문서 ${n.concDocs.length}건`:''}</td></tr>`:''}${n.penalty!==undefined&&n.penalty!==''?`<tr><th>협력사 평가 감점</th><td colspan="3">${esc(n.penalty)}점</td></tr>`:''}</table>${(n.contain||[]).length?`<table class="sm"><tr><th>재고 위치</th><th>대상 (EA)</th><th>선별 (EA)</th><th>불량 (EA)</th><th>완료일</th></tr>${n.contain.map(r=>`<tr><td>${esc(r.loc)}</td><td>${esc(r.target)}</td><td>${esc(r.sorted)}</td><td>${esc(r.ng)}</td><td>${esc(r.done)}</td></tr>`).join('')}</table>`:''}${(n.vlots||[]).length?`<table class="sm"><tr><th>검증 LOT</th><th>입고일</th><th>검사 (EA)</th><th>불량 (EA)</th><th>판정</th></tr>${n.vlots.map(r=>`<tr><td>${esc(r.lot)}</td><td>${esc(r.date)}</td><td>${esc(r.insp)}</td><td>${esc(r.ng)}</td><td>${vlotVerdict(r)}</td></tr>`).join('')}</table>`:''}
+  <tr><th>상태</th><td>${ncrStatus(n)}${ncrRejects(n)?` · 보완요청·반려 ${ncrRejects(n)}회`:''}</td><th>담당</th><td>${esc(n.owner)}</td></tr>${nds.length?`<tr><th>발송한 통보서 파일</th><td colspan="3">${nds.map(r=>esc(r.name)).join(' · ')}</td></tr>`:''}${rds.length?`<tr><th>협력사 대책서 파일</th><td colspan="3">${rds.map(r=>esc(r.name)).join(' · ')}</td></tr>`:''}${n.reqType!=='단순 통보'?`<tr><th>D3 봉쇄 기한 / 회신일</th><td>${esc(n.d3Due)} / ${esc(n.d3Date)}</td><th>클린 포인트</th><td>${esc(n.cleanPoint)}${n.cleanMark?'<br>'+esc(n.cleanMark):''}</td></tr>`:''}${n.concession&&n.concession!=='없음'?`<tr><th>특채</th><td colspan="3">${esc(n.concession)}${(n.concDocs||[]).length?` · 첨부 문서 ${n.concDocs.length}건`:''}</td></tr>`:''}${n.penalty!==undefined&&n.penalty!==''?`<tr><th>협력사 평가 감점</th><td colspan="3">${esc(n.penalty)}점</td></tr>`:''}</table>${(n.contain||[]).length?`<table class="sm"><tr><th>재고 위치</th><th>대상 (EA)</th><th>선별 (EA)</th><th>불량 (EA)</th><th>완료일</th></tr>${n.contain.map(r=>`<tr><td>${esc(r.loc)}</td><td>${esc(r.target)}</td><td>${esc(r.sorted)}</td><td>${esc(r.ng)}</td><td>${esc(r.done)}</td></tr>`).join('')}</table>`:''}${(n.vlots||[]).length?`<table class="sm"><tr><th>검증 LOT</th><th>입고일</th><th>검사 (EA)</th><th>불량 (EA)</th><th>판정</th></tr>${n.vlots.map(r=>`<tr><td>${esc(r.lot)}</td><td>${esc(r.date)}</td><td>${esc(r.insp)}</td><td>${esc(r.ng)}</td><td>${vlotVerdict(r)}</td></tr>`).join('')}</table>`:''}
   <table>${D8.map(([k,l])=>`<tr><th>${l}</th><td style="height:48px">${nl(n[k])}</td></tr>`).join('')}</table>
   ${(n.evals||[]).filter(evalDone).map((e,ri,arr)=>`<table class="sm" style="break-inside:avoid"><tr><th colspan="5" style="background:#dde4ef">대책서 평가 ${(n.evals||[]).indexOf(e)+1}차 — ${esc(e.date)} · 평가자 ${esc(e.by)} · <b>${evalScore(e)}점 / ${evalVerdict(e)}</b></th></tr>
     <tr><th>항목</th><th>배점</th><th>평가</th><th>점수</th><th>의견</th></tr>
@@ -3346,8 +3353,8 @@ async function print8D(id){
 }
 function exportNcrCSV(){
   const ns=filteredNcrs();
-  downloadCSV(`NCR목록_${today()}.csv`,[['NCR번호','발행일','협력사','부품번호','부품명','제목','상태','통보일','통보방법','대책요청일','회신기한','회신일','대책서파일','타당성','유효성기한','검증일','검증결과','특채','담당',...D8.map(x=>x[1])],
-    ...ns.map(n=>[n.no,n.issueDate,supName(n.supplierId),n.partNo,n.partName,n.title,ncrStatus(n),n.notifyDate||'',n.notifyMethod||'',n.requestDate,n.dueDate,n.replyDate,(n.replyDocs||[]).length||'',n.validity,n.verifyDue,n.verifyDate,n.verifyResult,n.concession,n.owner,...D8.map(([k])=>n[k])])]);
+  downloadCSV(`NCR목록_${today()}.csv`,[['NCR번호','발행일','협력사','부품번호','부품명','제목','상태','통보일','통보방법','통보서파일','대책요청일','회신기한','회신일','대책서파일','타당성','유효성기한','검증일','검증결과','특채','담당',...D8.map(x=>x[1])],
+    ...ns.map(n=>[n.no,n.issueDate,supName(n.supplierId),n.partNo,n.partName,n.title,ncrStatus(n),n.notifyDate||'',n.notifyMethod||'',(n.noticeDocs||[]).length||'',n.requestDate,n.dueDate,n.replyDate,(n.replyDocs||[]).length||'',n.validity,n.verifyDue,n.verifyDate,n.verifyResult,n.concession,n.owner,...D8.map(([k])=>n[k])])]);
 }
 
 /* ================= 협력사 품질 ================= */
@@ -4749,7 +4756,7 @@ async function restoreFromFolder(){
   await restoreReplace(inc);
   // 데이터만 든 최신 백업이면, 없는 사진은 사진이 든 날짜별 백업에서 채움
   if(!inc.photos){const full=L.filter(x=>BK_RE.test(x.n)&&!/사진제외/.test(x.n));let added=0;
-    for(const x of full){try{const need=new Set([...db.defects.flatMap(d=>[...(d.photos||[]),...logPhotoIds(d.logs)]),...db.ncrs.flatMap(n=>[...(n.concDocs||[]),...(n.replyDocs||[]),...logPhotoIds(n.logs)])]);if(!need.size)break;const have=new Set((await photoGetMany([...need])).filter(r=>!phIsPending(r)).map(r=>r.id));
+    for(const x of full){try{const need=new Set([...db.defects.flatMap(d=>[...(d.photos||[]),...logPhotoIds(d.logs)]),...db.ncrs.flatMap(n=>[...ncrDocIds(n),...logPhotoIds(n.logs)])]);if(!need.size)break;const have=new Set((await photoGetMany([...need])).filter(r=>!phIsPending(r)).map(r=>r.id));
       const miss=[...need].filter(i=>!have.has(i));if(!miss.length)break;const j=JSON.parse(await x.f.text());const ph=(j.photos||[]).filter(p=>p&&miss.includes(p.id));
       if(ph.length){added+=await applyPhotos(ph,false)}}catch(e){console.warn(e)}}
     if(added)toast(`복원 완료 — 사진 ${added}장은 ${full[0]?.n||'날짜별 백업'} 등에서 채웠습니다`)}
@@ -4930,7 +4937,7 @@ function phOwners(){
   const m={},put=(ids,no,part)=>(ids||[]).forEach(i=>{if(!m[i])m[i]={no,part}});
   const logIds=o=>(o.logs||[]).flatMap(l=>[...(l.photos||[]),...(l.hist||[]).flatMap(h=>h.photos||[])]);
   const nById=new Map(db.ncrs.map(n=>[n.id,n]));
-  db.ncrs.forEach(n=>{put(logIds(n),n.no,n.partNo);put(n.concDocs,n.no,n.partNo);put(n.replyDocs,n.no,n.partNo)});
+  db.ncrs.forEach(n=>{put(logIds(n),n.no,n.partNo);put(ncrDocIds(n),n.no,n.partNo)});
   db.defects.forEach(d=>{const n=d.ncrId&&nById.get(d.ncrId);put(d.photos,n?n.no:'',d.partNo);put(logIds(d),n?n.no:'',d.partNo)});
   return m;
 }
@@ -6160,7 +6167,7 @@ async function a3Report(kind,id){
 
 /* ---- 읽기 전용 사본 모드 ---- */
 const RO_FN=['saveDefect','saveNcr','saveInv','saveIca','saveSup','delDefect','delSup','delPart','delCost','openMasterImport','openBomImport','openRcvImport','openRcvLineImport','editReceipts',
-  'bomClear','resetAll','pickImport','exportJSON','exportSqlite','restoreFromFolder','pickRoot','unlinkRoot','rdAdd','rdRemove','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
+  'bomClear','resetAll','pickImport','exportJSON','exportSqlite','restoreFromFolder','pickRoot','unlinkRoot','dkAdd','dkRemove','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
   'ncrFromDefect','quickSup','pwaInstall','openImport','chooseQmsDir','makeShareFile','offerNcrAfterVerdict','addCost','addLabor','addBaseCost','addContact','unlinkDefect','miApply','bomApply','rlApply','riCommit','routeGo'].filter(n=>typeof window[n]==='function');
 const RO_RE=new RegExp('\\b('+RO_FN.join('|')+')\\(|\\b(edit(Defect|Ncr|Sup|Part))\\(\\)');
 const RO_ACT=new Set(['czNav','open','filtq','csv','tab','report','gotoTab','filt','actFilt']);
