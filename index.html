@@ -1196,7 +1196,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.9';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4421,7 +4421,9 @@ function renderData(){
     sv('A등급','협력사 귀책 불량수량 ÷ 입고수량 × 1,000,000 이 값 이하',sNum('gradeA','PPM 이하',0))+
     sv('B등급','',sNum('gradeB','PPM 이하',0))+sv('C등급','이 값을 넘으면 D등급입니다.',sNum('gradeC','PPM 이하',0)));
   // 백업은 '자동 백업(폴더) + 화면 위 백업 버튼 하나'로 — 사진 폴더 · 저장 방식은 '저장 공간'으로
-  P.backup=()=>sg('자동 백업',
+  const rootSt=rootDir?`<span class="bg ok">사용 중</span> <b>${esc(rootDir.name)}</b> <span class="muted">— 사진 · 첨부: ${esc(rootDir.name)}\\${ROOT_SUB.photoDir} · 백업: ${esc(rootDir.name)}\\${ROOT_SUB.backupDir}</span>`:lazyH.rootDir?`<span class="bg warn">허용 대기</span> <b>${esc(lazyH.rootDir.name)}</b> <span class="muted">— 사진 저장 · 백업할 때 허용 창이 한 번 뜹니다</span>`:'<span class="bg mut">지정 안 됨</span>'+((photoDir||backupDir||lazyH.photoDir||lazyH.backupDir)?' <span class="muted">(사진 · 백업 폴더를 따로 지정해 쓰는 중)</span>':'');
+  const rootRow=sg('기본 저장 폴더 (한 번에 지정)',sv('QIS 폴더',`폴더 <b>하나만</b> 고르면 그 안에 <b>‘${ROOT_SUB.photoDir}’</b> · <b>‘${ROOT_SUB.backupDir}’</b> 폴더를 만들어 사진 · 첨부와 백업(최신 백업 · 날짜별 백업 · QIS.sqlite)을 각각 저장합니다. 허용도 이 폴더 한 번이면 됩니다.<br><b>권장:</b> OneDrive(동기화 폴더) 또는 회사 네트워크 드라이브 안에 <code>QIS</code> 폴더를 만들어 고르세요 — 노트북이 고장 나도 그대로 남습니다.<br>${rootSt}`,`<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="b s ${rootDir||lazyH.rootDir?'':'p'}" onclick="pickRoot()">${rootDir||lazyH.rootDir?'다른 폴더':'기본 폴더 지정'}</button>${rootDir||lazyH.rootDir?'<button class="b s" onclick="unlinkRoot()">해제</button>':''}</span>`));
+  P.backup=()=>rootRow+sg('자동 백업',
       sv('백업 폴더',`지정해 두면 두 가지가 자동으로 쌓입니다 — ① 고친 뒤 <b>1분 안에</b> <code>${LATEST_BK}</code>를 덮어씀 (데이터만) ② <b>하루 한 번</b> 날짜별 백업 (사진 · 첨부 포함). 따로 백업할 때는 화면 위 <b>백업</b> 버튼 — 폴더가 없으면 다운로드로 받습니다.<br><b>노트북 고장 · 분실 대비:</b> 이 폴더를 <b>OneDrive(동기화 폴더) 또는 회사 네트워크 드라이브 안</b>으로 지정하세요 — 앱은 폴더에 파일만 쓰고, 동기화는 OneDrive가 합니다.<br>${dirSt('backupDir')}`,dirBtns('backupDir',''))+
       ((backupDir||lazyH.backupDir)?sv('최신 백업 (1분 안)','',`<b id="latestBk">${latestBkAt?loc(latestBkAt):'이번 실행 중 아직 없음'}</b>`):'')+
       sv('마지막 백업','',`<b>${db.meta.lastBackup?loc(db.meta.lastBackup):'없음'}</b>${backupDue()?' <span class="bg warn">백업 필요</span>':''}`)+
@@ -4570,8 +4572,31 @@ function dirAttach(k,h,quiet){
   else{backupDir=h;setTimeout(()=>autoBackup(false),1500)}
   updateSaveInfo();
 }
+// 기본 저장 폴더: 하나만 고르면 그 안에 ‘사진·첨부’ · ‘백업’ 폴더를 만들어 각각 씀 (허용도 이 폴더 한 번)
+const ROOT_SUB={photoDir:'사진·첨부',backupDir:'백업'};let rootDir=null;
+async function pickRoot(){
+  if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 지정을 지원하지 않습니다 — Edge 또는 Chrome에서 여세요');return}
+  let h;try{h=await window.showDirectoryPicker({id:'qms-root',mode:'readwrite'})}catch(e){if(e.name!=='AbortError')toast('폴더 지정 실패: '+e.message);return}
+  try{await attachRoot(h,false)}catch(e){toast('폴더 만들기 실패: '+e.message);return}
+  toast(`기본 저장 폴더 ‘${h.name}’ — 사진 · 첨부는 ‘${ROOT_SUB.photoDir}’, 백업은 ‘${ROOT_SUB.backupDir}’ 폴더에 저장합니다`);render();
+}
+async function attachRoot(h,quiet){
+  const ph=await h.getDirectoryHandle(ROOT_SUB.photoDir,{create:true}),bk=await h.getDirectoryHandle(ROOT_SUB.backupDir,{create:true});
+  rootDir=h;delete lazyH.rootDir;
+  try{await hPut('rootDir',h);await hPut('photoDir',ph);await hPut('backupDir',bk)}catch(e){}
+  if(!quiet)phDirtySet(true);
+  dirAttach('photoDir',ph,quiet);dirAttach('backupDir',bk,quiet);if(!quiet)setTimeout(()=>autoBackup(true),300);
+}
+async function unlinkRoot(){
+  if(!await askConfirm({title:'기본 저장 폴더 지정을 해제할까요?',msg:'사진 · 첨부 폴더와 백업 폴더 지정도 함께 해제합니다. 폴더에 이미 저장된 파일은 지워지지 않고, 앱 안의 데이터 · 사진도 그대로입니다.',ok:'해제',danger:false}))return;
+  rootDir=null;photoDir=null;backupDir=null;['rootDir','photoDir','backupDir'].forEach(k=>{delete lazyH[k];delete lazyNo[k]});
+  for(const k of ['rootDir','photoDir','backupDir'])try{await hDel(k)}catch(e){}
+  updateSaveInfo();render();
+}
 async function ensureDir(k){
   const cur=k==='photoDir'?photoDir:backupDir;if(cur)return true;
+  // 기본 폴더로 지정한 경우: 기본 폴더에 한 번 허용 → 사진 · 백업 폴더 둘 다 사용
+  if(lazyH.rootDir&&!lazyNo.rootDir){try{if(await permOK(lazyH.rootDir,true)){await attachRoot(lazyH.rootDir,true);return !!(k==='photoDir'?photoDir:backupDir)}lazyNo.rootDir=true}catch(e){}}
   const h=lazyH[k];if(!h)return false;
   try{if(await permOK(h,true)){dirAttach(k,h,true);return true}lazyNo[k]=true}catch(e){}
   updateSaveInfo();return false;
@@ -4580,6 +4605,7 @@ async function pickDir(k){
   if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 지정을 지원하지 않습니다 — Edge 또는 Chrome에서 여세요');return}
   let h;try{h=await window.showDirectoryPicker({id:'qms-'+k,mode:'readwrite'})}catch(e){if(e.name!=='AbortError')toast('폴더 지정 실패: '+e.message);return}
   try{await hPut(k,h)}catch(e){}
+  if(rootDir||lazyH.rootDir){rootDir=null;delete lazyH.rootDir;try{await hDel('rootDir')}catch(e){}}  // 따로 고르면 기본 폴더 묶음은 풂
   if(k==='photoDir')phDirtySet(true);
   dirAttach(k,h,false);if(k==='backupDir')setTimeout(()=>autoBackup(true),300);
   toast(`${DIR_L[k]}: ‘${h.name}’ 지정`);render();
@@ -4587,6 +4613,7 @@ async function pickDir(k){
 async function unlinkDir(k){
   if(!await askConfirm({title:`${DIR_L[k]} 지정을 해제할까요?`,msg:'폴더에 이미 저장된 파일은 지워지지 않습니다. 앱 안의 데이터 · 사진도 그대로입니다.',ok:'해제',danger:false}))return;
   if(k==='photoDir')photoDir=null;else backupDir=null;delete lazyH[k];delete lazyNo[k];
+  if(rootDir||lazyH.rootDir){rootDir=null;delete lazyH.rootDir;try{await hDel('rootDir')}catch(e){}}
   try{await hDel(k)}catch(e){}updateSaveInfo();render();
 }
 async function photoDirNow(){if(!await ensureDir('photoDir'))return;phFiles=null;const r=await syncPhotoFiles(true);if(r)toast(r.wrote||r.renamed||r.removed?`사진 · 첨부 파일 저장 ${r.wrote} · 이름 변경 ${r.renamed} · 삭제 ${r.removed}`:'사진 · 첨부 폴더가 최신 상태입니다')}
@@ -4627,7 +4654,10 @@ async function restoreFromFolder(){
   if(!dir&&lazyH.backupDir&&await ensureDir('backupDir'))dir=backupDir;
   if(!dir){if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 열기를 지원하지 않습니다 — ‘백업으로 교체’에서 파일을 직접 고르세요');return}
     try{dir=await window.showDirectoryPicker({id:'qms-backupDir',mode:'readwrite'})}catch(e){if(e.name!=='AbortError')toast('폴더 열기 실패: '+e.message);return}}
-  const L=[];for await(const [n,h] of dir.entries()){if(h.kind==='file'&&(BK_RE.test(n)||n===LATEST_BK)){const f=await h.getFile();L.push({n,f,t:f.lastModified})}}
+  const scan=async d=>{const L=[];for await(const [n,h] of d.entries()){if(h.kind==='file'&&(BK_RE.test(n)||n===LATEST_BK)){const f=await h.getFile();L.push({n,f,t:f.lastModified})}}return L};
+  let L=await scan(dir),pickedRoot=null;
+  // 기본 저장 폴더(QIS)를 고른 경우: 그 안의 ‘백업’ 폴더에서 찾음
+  if(!L.length){try{const sub=await dir.getDirectoryHandle(ROOT_SUB.backupDir);const L2=await scan(sub);if(L2.length){pickedRoot=dir;dir=sub;L=L2}}catch(e){}}
   if(!L.length){toast(`‘${dir.name}’ 폴더에 QIS 백업 파일이 없습니다`);return}
   L.sort((a,b)=>b.t-a.t);const top=L[0];let inc;
   try{inc=JSON.parse(await top.f.text());if(!inc||!inc.settings||!Array.isArray(inc.defects))throw new Error('백업 형식이 아닙니다')}catch(e){toast(`${top.n} 읽기 실패: ${e.message}`);return}
@@ -4642,7 +4672,8 @@ async function restoreFromFolder(){
       const miss=[...need].filter(i=>!have.has(i));if(!miss.length)break;const j=JSON.parse(await x.f.text());const ph=(j.photos||[]).filter(p=>p&&miss.includes(p.id));
       if(ph.length){added+=await applyPhotos(ph,false)}}catch(e){console.warn(e)}}
     if(added)toast(`복원 완료 — 사진 ${added}장은 ${full[0]?.n||'날짜별 백업'} 등에서 채웠습니다`)}
-  if(!backupDir&&dir){try{await hPut('backupDir',dir)}catch(e){}dirAttach('backupDir',dir,true);updateSaveInfo()}
+  if(pickedRoot&&!rootDir){try{await attachRoot(pickedRoot,true)}catch(e){}}
+  else if(!backupDir&&dir){try{await hPut('backupDir',dir)}catch(e){}dirAttach('backupDir',dir,true);updateSaveInfo()}
   render();
 }
 async function autoBackup(force,tag){
@@ -6048,7 +6079,7 @@ async function a3Report(kind,id){
 
 /* ---- 읽기 전용 사본 모드 ---- */
 const RO_FN=['saveDefect','saveNcr','saveInv','saveIca','saveSup','delDefect','delSup','delPart','delCost','openMasterImport','openBomImport','openRcvImport','openRcvLineImport','editReceipts',
-  'bomClear','resetAll','pickImport','exportJSON','exportSqlite','restoreFromFolder','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
+  'bomClear','resetAll','pickImport','exportJSON','exportSqlite','restoreFromFolder','pickRoot','unlinkRoot','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
   'ncrFromDefect','quickSup','pwaInstall','openImport','chooseQmsDir','makeShareFile','offerNcrAfterVerdict','addCost','addLabor','addBaseCost','addContact','unlinkDefect','miApply','bomApply','rlApply','riCommit','routeGo'].filter(n=>typeof window[n]==='function');
 const RO_RE=new RegExp('\\b('+RO_FN.join('|')+')\\(|\\b(edit(Defect|Ncr|Sup|Part))\\(\\)');
 const RO_ACT=new Set(['czNav','open','filtq','csv','tab','report','gotoTab','filt','actFilt']);
@@ -6093,8 +6124,11 @@ bootReady.then(()=>{
 // 데이터 원본은 브라우저. 사진·첨부 폴더와 백업 폴더만 이 PC 폴더에 사본으로 저장 (예전 OneDrive 연결 정보는 정리)
 (async()=>{if(RO)return;await bootReady;try{
   for(const k of ['qmsDir','dataFile'])await hDel(k).catch(()=>{});
-  for(const k of ['photoDir','backupDir']){const h=await hGet(k);if(!h)continue;
-    if(await permOK(h,false))dirAttach(k,h,true);else lazyH[k]=h}
+  const root=await hGet('rootDir');
+  if(root&&await permOK(root,false))await attachRoot(root,true);
+  else{if(root)lazyH.rootDir=root;
+    for(const k of ['photoDir','backupDir']){const h=await hGet(k);if(!h)continue;
+      if(await permOK(h,false))dirAttach(k,h,true);else lazyH[k]=h}}
   updateSaveInfo();if(state.tab==='data')render();
 }catch(e){}})();
 /* ---- 설치형 앱 (PWA) ---- */
