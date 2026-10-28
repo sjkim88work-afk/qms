@@ -23,6 +23,7 @@
 | `manifest.webmanifest` | 앱 이름 · 아이콘 · 창 모양 |
 | `sw.js` | 인터넷 없이 실행되게 하는 파일 |
 | `icons/` | 앱 아이콘 |
+| `lib/` | SQLite 엔진 (QIS.sqlite 만들기용, sql.js) |
 | `web.config` | 회사 서버가 IIS일 때만 필요 |
 | `.nojekyll` | GitHub Pages용 (없어도 동작) |
 | `CHANGELOG.md` | 버전별 변경 내역 |
@@ -70,6 +71,30 @@
 
 설정 → 백업 · 복원 → **이 PC 저장 폴더**에서 사진 · 첨부 폴더와 백업 폴더를 지정합니다.
 설치한 앱은 폴더 허용을 기억하므로, 처음 한 번만 허용하면 다음부터 묻지 않습니다.
+
+---
+
+## SQL로 조회하기 (QIS.sqlite)
+
+설정 › 백업 · 복원 › **SQL로 조회 (SQLite 파일)** 에서 지금 데이터를 SQLite DB 파일 `QIS.sqlite`로 만듭니다.
+백업 폴더를 지정해 두면 자동 백업 때 같은 폴더에 **덮어써서** 늘 최신 상태로 둡니다 (파일 위치 고정).
+앱의 원본 데이터는 그대로이고, 이 파일은 **읽기용 사본**입니다 — 고쳐도 앱에는 반영되지 않습니다.
+
+- **바로 열어 보기**: [DB Browser for SQLite](https://sqlitebrowser.org/) (무료) → 파일 열기 → ‘SQL 실행’ 탭
+- **Excel · Power BI**: SQLite ODBC 드라이버 설치 → ODBC 데이터 원본에 `QIS.sqlite` 연결 → 데이터 가져오기
+- 주요 표: `defects` · `defect_costs` · `ncrs` · `parts` · `suppliers` · `supplier_contacts` · `receipts` · `bom_products` · `bom_rows` · `rca_cases` · `rca_actions` · `supplier_month`(협력사 × 월 불량 · 입고 · PPM)
+- 조회(뷰): `v_defects` · `v_ncr_open` · `v_monthly`
+- `x_` 로 시작하는 열은 앱이 계산한 값 (협력사명 · 심각도 등급 · 진행 상태 · NCR 번호 · 비용 합계 · 원화 단가 등)
+
+```sql
+-- 협력사별 월 PPM
+SELECT supplier, month, defect_qty, receipt_qty, ROUND(ppm) AS ppm FROM supplier_month ORDER BY month, ppm DESC;
+-- 진행 중 NCR
+SELECT * FROM v_ncr_open ORDER BY issueDate;
+```
+
+SQLite 엔진(`lib/sql-wasm.*`, [sql.js](https://github.com/sql-js/sql.js) 1.10.3, MIT)은 앱과 함께 올라가 오프라인에서도 동작합니다.
+HTML 파일을 직접 열어 쓰는 경우에는 처음 한 번 인터넷(cdnjs)에서 받습니다.
 
 ---
 
