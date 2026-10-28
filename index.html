@@ -607,7 +607,7 @@ function defaultDB(){return{
     sources:['수입검사','공정','출하검사','고객(클레임)'],
     dispositions:['반품','선별','재작업','특채','폐기'],
     owners:[],
-    ncrRepeat:3,ncrQty:50,repeatWindow:90,requestDays:2,replyDays:7,verifyDays:21,backupDays:7,farDays:5,ntfDays:30,
+    ncrRepeat:3,ncrQty:50,repeatWindow:90,requestDays:2,replyDays:7,verifyDays:21,backupDays:7,sqliteAuto:1,farDays:5,ntfDays:30,
     laborRate:30000,fx:{USD:1400,EUR:1610,CNY:195,JPY:9.3,MXN:75,INR:16.5,VND:0.055},fxDate:'',gradeA:100,gradeB:500,gradeC:1000,photoMax:1600,photoQ:80,backupKeep:30,backupPhotos:1,company:'',dept:'',logo:'',ncrFormat:'NCR-{YY}{MM}-{SEQ3}',issuerPhone:'',issuerEmail:'',approver:'',signs:{},evalPass:80,evalCond:60,sevA:12,sevB:8,reply8D:7,replySimple:5,d3Days:1,escCount:2,ppmScar:1000,ppmScarMonths:3,impactMap:{'치수':3,'외관(스크래치)':1,'외관(찍힘/변형)':2,'이물':2,'녹/부식':2,'기능불량':3,'소음/NVH':3,'오삽/혼입':3,'누락/결품':3,'포장불량':1,'기타':2}
   },
   suppliers:[],parts:[],defects:[],ncrs:[],receipts:[],reviews:[],cases:[],actions:[],deleted:[],bom:{updatedAt:'',rows:[]}
@@ -1195,7 +1195,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.7';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.8';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4425,6 +4425,9 @@ function renderData(){
       sv('마지막 백업','',`<b>${db.meta.lastBackup?loc(db.meta.lastBackup):'없음'}</b>${backupDue()?' <span class="bg warn">백업 필요</span>':''}`)+
       ((backupDir||lazyH.backupDir)?sv('보관 개수','폴더에 최근 몇 개의 백업 파일을 남길지 정합니다 (0 = 모두 보관).',sNum('backupKeep','개',0,365)):'')+
       sv('백업 알림','마지막 백업 후 이 일수가 지나면 화면 위 백업 버튼이 <b>‘백업 필요’</b>(주황색)로 바뀝니다.',sNum('backupDays','일마다',1,60)))+
+    sg('SQL로 조회 (SQLite 파일)',
+      sv('QIS.sqlite',`지금 데이터를 <b>SQLite DB 파일 하나</b>로 만듭니다 — <b>DB Browser for SQLite</b>로 열어 SQL로 조회하거나, Excel · Power BI에서 SQLite ODBC 드라이버로 연결합니다. 앱의 원본은 그대로이고 이 파일은 <b>읽기용 사본</b>입니다 (사진 이미지는 빼고 사진 목록만).<br><span class="muted">표: suppliers · supplier_contacts · parts · defects · defect_costs · ncrs · receipts · rca_cases · rca_actions · bom_products · bom_rows · supplier_month(협력사 × 월 PPM) · 조회: v_defects · v_ncr_open · v_monthly — <code>x_</code>로 시작하는 열은 앱이 계산한 값(협력사명 · 심각도 등급 · 진행 상태 · 비용 합계 등)</span><br>마지막: <b>${db.meta.lastSqlite?loc(db.meta.lastSqlite):'없음'}</b>`,btn(backupDir||lazyH.backupDir?'지금 만들기 (폴더에 저장)':'지금 만들기 (다운로드)','exportSqlite()','p'))+
+      sv('자동 백업 때 함께',`백업 폴더의 하루 한 번 자동 백업(과 화면 위 <b>백업</b> 버튼) 때 <b>QIS.sqlite</b>도 같은 폴더에 덮어씁니다 — 파일 위치가 고정되어 Excel · Power BI 연결을 한 번만 만들면 됩니다.`,`<label class="row" style="gap:6px"><input type="checkbox" ${num(db.settings.sqliteAuto)?'checked':''} onchange="db.settings.sqliteAuto=this.checked?1:0;save()"> 함께 만들기</label>`))+
     sg('복원 · 다른 PC로 옮기기',
       sv('백업으로 교체','현재 데이터를 백업 파일 내용으로 <b>모두 교체</b>합니다. 새 PC에서 처음 열었을 때 이것을 쓰세요.',btn('파일 선택','pickImport(\'replace\')','d'))+
       sv('백업 합치기','현재 데이터는 두고, 백업 파일에만 있는 기록을 더합니다. 같은 기록은 더 최근에 고친 쪽을 남깁니다.',btn('파일 선택','pickImport(\'merge\')')))+
@@ -4611,6 +4614,7 @@ async function autoBackup(force,tag){
       names.sort().reverse();for(const n of names.slice(keep)){try{await backupDir.removeEntry(n);removed++}catch(e){}}}
     db.meta.lastAutoBackup=today();db.meta.lastBackup=now();db.meta.lastAutoBackupAt=now();
     if(dataStore==='idb')persist();else try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}
+    if(num(db.settings.sqliteAuto))setTimeout(()=>exportSqlite(true),200);  // SQL 조회용 사본도 함께 (QIS.sqlite 덮어씀)
     if(force)toast(`‘${backupDir.name}’ 폴더에 ${name} 저장${removed?` · 오래된 백업 ${removed}개 정리`:''}`);
     if(state.tab==='data'||state.tab==='dash')render();
   }catch(e){toast('자동 백업 실패: '+e.message)}
@@ -4660,6 +4664,89 @@ const photoClear=()=>pTx('readwrite',s=>{s.clear()});
 async function photoList(){if(photoStr==null)photoStr=await photoAll();return photoStr}
 /* withPhotos: true = 사진 데이터 포함 · 'meta' = 사진 정보만(사진 본체는 사진 폴더의 파일) · false = 사진 제외 */
 async function photosJSON(metaOnly){const a=await photoList();return JSON.stringify(a.map(p=>metaOnly||phIsPending(p)?phMeta(p):p))}
+/* ================= SQLite 파일 (QIS.sqlite) =================
+   지금 데이터를 SQLite DB 파일 하나로 만듦 — DB Browser for SQLite · Excel/Power BI(ODBC)에서 SQL로 조회
+   · 원본은 그대로 브라우저 저장소. 이 파일은 읽기용 사본 (백업 폴더가 있으면 자동 백업 때 같이 덮어씀)
+   · 표마다 원래 항목 + 앱이 계산한 값(x_ 로 시작: 협력사명 · 심각도 등급 · 진행 상태 · 비용 합계 등)
+   · SQLite 엔진(sql.js)은 앱과 같은 곳의 lib/ 에서, 없으면(파일로 연 경우) 인터넷(cdnjs)에서 처음 한 번 받음 */
+const SQLJS_VER='1.10.3';let _SQL=null;
+function loadScriptOnce(src){return new Promise((res,rej)=>{if(window.initSqlJs)return res();const s=document.createElement('script');s.src=src;s.onload=()=>res();s.onerror=()=>{s.remove();rej(new Error('불러오기 실패: '+src))};document.head.appendChild(s)})}
+async function loadSql(){
+  if(_SQL)return _SQL;
+  const bases=[...(/^https?:$/.test(location.protocol)?['lib/']:[]),`https://cdnjs.cloudflare.com/ajax/libs/sql.js/${SQLJS_VER}/`];let last;
+  for(const b of bases){try{await loadScriptOnce(b+'sql-wasm.js');_SQL=await window.initSqlJs({locateFile:f=>b+f});return _SQL}catch(e){last=e;try{delete window.initSqlJs}catch(_){}}}
+  throw new Error('SQLite 엔진을 불러오지 못했습니다 — 처음 한 번은 인터넷 연결이 필요합니다 ('+(last&&last.message||'')+')');
+}
+const sqlId=k=>'"'+String(k).replace(/[^A-Za-z0-9_가-힣]/g,'_').replace(/"/g,'')+'"';
+const sqlVal=v=>v==null||v===''?null:typeof v==='boolean'?(v?1:0):typeof v==='number'?(isFinite(v)?v:null):typeof v==='object'?JSON.stringify(v):String(v);
+// 레코드 목록 → 표 (열 = 모든 레코드의 항목 합집합, 숫자뿐이면 REAL, 배열 · 객체는 JSON 글자)
+function sqlTable(sdb,name,rows,first){
+  const cols=[...new Set([...(first||[]),...rows.flatMap(r=>Object.keys(r))])].filter(k=>!k.startsWith('_'));
+  if(!cols.length)cols.push('id');
+  const typ=k=>{let num=0,oth=0;rows.forEach(r=>{const v=r[k];if(v==null||v==='')return;(typeof v==='number'||typeof v==='boolean')?num++:oth++});return num&&!oth?'REAL':'TEXT'};
+  sdb.run(`CREATE TABLE ${sqlId(name)} (${cols.map(k=>`${sqlId(k)} ${typ(k)}${k==='id'&&rows.every(r=>r.id)&&new Set(rows.map(r=>r.id)).size===rows.length?' PRIMARY KEY':''}`).join(', ')})`);
+  if(!rows.length)return 0;
+  const st=sdb.prepare(`INSERT INTO ${sqlId(name)} (${cols.map(sqlId).join(',')}) VALUES (${cols.map(()=>'?').join(',')})`);
+  rows.forEach(r=>st.run(cols.map(k=>sqlVal(r[k]))));st.free();return rows.length;
+}
+async function buildSqlite(){
+  const SQL=await loadSql(),sdb=new SQL.Database(),n={};
+  const omit=(o,ks)=>{const c={...o};ks.forEach(k=>delete c[k]);return c};
+  const sup=id=>supById(id),costSum=d=>(d.costs||[]).reduce((a,c)=>a+num(c.amt),0);
+  sdb.run('BEGIN');
+  n.suppliers=sqlTable(sdb,'suppliers',db.suppliers.map(s=>{const p=primaryOf(s);return {...omit(s,['contacts','contactLog']),x_contact:p?p.name:'',x_phone:p?(p.mobile||p.phone):'',x_email:p?p.email:'',x_parts:db.parts.filter(q=>q.supplierId===s.id).length}}),['id','code','name']);
+  n.supplier_contacts=sqlTable(sdb,'supplier_contacts',db.suppliers.flatMap(s=>(s.contacts||[]).map(c=>({supplier_id:s.id,x_supplier:s.name,...c}))),['supplier_id','x_supplier']);
+  n.supplier_contact_log=sqlTable(sdb,'supplier_contact_log',db.suppliers.flatMap(s=>(s.contactLog||[]).map(c=>({supplier_id:s.id,x_supplier:s.name,...c}))),['supplier_id','x_supplier']);
+  n.parts=sqlTable(sdb,'parts',db.parts.map(p=>({...p,x_supplier:sup(p.supplierId)?.name||'',x_supplier_code:sup(p.supplierId)?.code||'',x_currency:curOf(p),x_price_krw:p.price===''||p.price==null?null:partKRW(p),x_bom_products:bomPartUse(p).fgs.size,x_is_bom_product:bomPartUse(p).fg?1:0})),['id','partNo','name','model']);
+  n.defects=sqlTable(sdb,'defects',db.defects.map(d=>{const v=sevOf(d),st=defStage(d),nc=d.ncrId?db.ncrs.find(x=>x.id===d.ncrId):null;
+    return {...omit(d,['costs','photos','sevLock']),x_month:(d.date||'').slice(0,7),x_supplier:sup(d.supplierId)?.name||'',x_supplier_code:sup(d.supplierId)?.code||'',x_grade:v.grade,x_score:v.score,x_stage:st.label,x_done:st.done?1:0,x_ncr_no:nc?nc.no:'',x_ncr_status:nc?ncrStatus(nc):'',x_cost_total:costSum(d),x_photos:(d.photos||[]).length,x_ppm_lot:num(d.inspQty)?num(d.qty)/num(d.inspQty)*1e6:null}}),['id','date','source','partNo','partName','qty','inspQty']);
+  n.defect_costs=sqlTable(sdb,'defect_costs',db.defects.flatMap(d=>(d.costs||[]).map((c,i)=>({defect_id:d.id,seq:i+1,...c}))),['defect_id','seq']);
+  n.defect_photos=sqlTable(sdb,'defect_photos',db.defects.flatMap(d=>(d.photos||[]).map((p,i)=>({defect_id:d.id,seq:i+1,photo_id:typeof p==='string'?p:(p&&p.id)||''}))),['defect_id','seq','photo_id']);
+  n.ncrs=sqlTable(sdb,'ncrs',db.ncrs.map(x=>({...x,x_status:ncrStatus(x),x_supplier:sup(x.supplierId)?.name||'',x_supplier_code:sup(x.supplierId)?.code||'',x_month:(x.issueDate||'').slice(0,7),x_defects:(x.defectIds||[]).length,x_eval_score:x.evalScore??null})),['id','no','issueDate','reqType']);
+  n.receipts=sqlTable(sdb,'receipts',db.receipts.map(r=>({...r,x_supplier:sup(r.supplierId)?.name||'',x_supplier_code:sup(r.supplierId)?.code||''})),['id','kind','month','date','supplierId','partNo','qty']);
+  n.rca_cases=sqlTable(sdb,'rca_cases',db.cases||[],['id','CaseNo','Title','Stage']);
+  n.rca_actions=sqlTable(sdb,'rca_actions',db.actions||[],['id','CaseId','Title','ActionStatus']);
+  n.reviews=sqlTable(sdb,'reviews',db.reviews||[]);
+  n.bom_products=sqlTable(sdb,'bom_products',[...bomIx().byFg.keys()].map(f=>({fgNo:f,...bomFg(f),x_rows:(bomIx().byFg.get(f)||[]).length})),['fgNo','name','model']);
+  n.bom_rows=sqlTable(sdb,'bom_rows',db.bom.rows.map(r=>({...r,x_total_qty:bTot(r),x_level:bomLv(r)})),['fgNo','seq','level','partNo','partName','parentNo','qty']);
+  // 협력사 × 월: 불량수량(협력사 · 공동 귀책) · 입고수량 · PPM — 앱의 협력사 품질 화면과 같은 규칙
+  const sm=[];db.suppliers.forEach(s=>{const my=db.defects.filter(d=>d.supplierId===s.id&&(!d.resp||d.resp==='협력사'||d.resp==='공동'));
+    const ms=new Set([...my.map(d=>(d.date||'').slice(0,7)),...db.receipts.filter(r=>r.supplierId===s.id).map(r=>r.month)].filter(Boolean));
+    [...ms].sort().forEach(m=>{const dq=my.filter(d=>(d.date||'').startsWith(m)),q=dq.reduce((a,d)=>a+num(d.qty),0),rc=rcvSum(s.id,m);
+      sm.push({supplier_id:s.id,supplier:s.name,supplier_code:s.code||'',month:m,defect_count:dq.length,defect_qty:q,receipt_qty:rc,ppm:rc?q/rc*1e6:null,ncr_count:db.ncrs.filter(x=>x.supplierId===s.id&&(x.issueDate||'').startsWith(m)).length})})});
+  n.supplier_month=sqlTable(sdb,'supplier_month',sm);
+  sdb.run(`CREATE TABLE "settings" ("key" TEXT PRIMARY KEY, "value" TEXT)`);
+  {const st=sdb.prepare('INSERT INTO settings VALUES (?,?)');Object.entries(db.settings).forEach(([k,v])=>{if(k==='logo'||k==='signs')return;st.run([k,sqlVal(v)])});st.free()}
+  sdb.run(`CREATE TABLE "about" ("key" TEXT PRIMARY KEY, "value" TEXT)`);
+  [['app','QIS'],['app_version',APP_VER],['exported_at',now()],['note','QIS 데이터의 읽기용 사본. x_ 로 시작하는 열은 앱이 계산한 값. 수정해도 앱에는 반영되지 않음']].forEach(r=>sdb.run('INSERT INTO about VALUES (?,?)',r));
+  // 자주 쓰는 조회 — 데이터에 있는 열만 써서 만듦 (없는 항목은 빈 값)
+  const colsOf=t=>new Set(sdb.exec(`PRAGMA table_info(${sqlId(t)})`)[0]?.values.map(v=>v[1])||[]);
+  const mkView=(name,t,F,tail='')=>{const C=colsOf(t);sdb.run(`CREATE VIEW ${name} AS SELECT ${F.map(([c,a,e])=>`${C.has(c)?(e||sqlId(c)):'NULL'} AS ${sqlId(a||c)}`).join(', ')} FROM ${sqlId(t)} ${tail}`)};
+  mkView('v_defects','defects',[['date'],['x_month','month'],['source'],['partNo'],['partName'],['model'],['x_supplier','supplier'],['type'],['qty'],['inspQty','lot_qty'],['x_grade','grade'],['resp'],['disposition'],['x_stage','stage'],['x_ncr_no','ncr_no'],['x_ncr_status','ncr_status'],['x_cost_total','cost'],['spec'],['actual'],['desc']]);
+  mkView('v_ncr_open','ncrs',[['no'],['issueDate'],['x_supplier','supplier'],['partNo'],['partName'],['reqType'],['x_status','status'],['dueDate'],['replyDate'],['verifyDue']],`WHERE ${colsOf('ncrs').has('x_status')?'"x_status"':"''"} <> '종결'`);
+  {const C=colsOf('defects');if(C.has('x_month'))sdb.run(`CREATE VIEW v_monthly AS SELECT x_month AS month, COUNT(*) AS defects, ${C.has('qty')?'SUM(qty)':'0'} AS qty, SUM(x_cost_total) AS cost, SUM(x_grade='A') AS grade_a FROM defects GROUP BY x_month`)}
+  sdb.run('COMMIT');
+  const out=sdb.export();sdb.close();return {bytes:out,n};
+}
+let sqliteBusy=false;
+// toDir: 백업 폴더가 있으면 QIS.sqlite로 덮어쓰기, 없으면 내려받기 · quiet: 자동 백업 때 조용히
+async function exportSqlite(quiet){
+  if(RO||sqliteBusy)return;sqliteBusy=true;
+  try{
+    if(!quiet)toast('SQLite 파일을 만드는 중…');
+    const {bytes,n}=await buildSqlite(),blob=new Blob([bytes],{type:'application/vnd.sqlite3'});
+    let where='';
+    if(backupDir||(!quiet&&lazyH.backupDir&&await ensureDir('backupDir'))){
+      if(!await permOK(backupDir,false))throw new Error('백업 폴더 사용이 허용되지 않았습니다');
+      const fh=await backupDir.getFileHandle('QIS.sqlite',{create:true}),w=await fh.createWritable();await w.write(blob);await w.close();where=`‘${backupDir.name}’ 폴더의 QIS.sqlite`;
+    }else if(!quiet){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='QIS.sqlite';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);where='다운로드한 QIS.sqlite'}
+    else return;
+    db.meta.lastSqlite=now();db.meta.lastSqliteN=n;save();
+    if(!quiet)toast(`${where} — 불량 ${n.defects} · NCR ${n.ncrs} · 부품 ${n.parts} · 입고 ${n.receipts} (${(bytes.length/1048576).toFixed(1)}MB)`);
+    if(state.tab==='data')render();
+  }catch(e){console.error(e);if(!quiet)toast('SQLite 만들기 실패: '+e.message)}
+  finally{sqliteBusy=false}
+}
 async function fullJSON(withPhotos=true){
   const base=JSON.stringify(db);
   if(!withPhotos)return base;
@@ -5914,7 +6001,7 @@ async function a3Report(kind,id){
 
 /* ---- 읽기 전용 사본 모드 ---- */
 const RO_FN=['saveDefect','saveNcr','saveInv','saveIca','saveSup','delDefect','delSup','delPart','delCost','openMasterImport','openBomImport','openRcvImport','openRcvLineImport','editReceipts',
-  'bomClear','resetAll','pickImport','exportJSON','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
+  'bomClear','resetAll','pickImport','exportJSON','exportSqlite','pickDir','unlinkDir','photoDirNow','setS','setFx','ncrQuickNotify','rcvDefect','czNewCaseModal','czFromDefect','czFromNcr','czApplyVerdict',
   'ncrFromDefect','quickSup','pwaInstall','openImport','chooseQmsDir','makeShareFile','offerNcrAfterVerdict','addCost','addLabor','addBaseCost','addContact','unlinkDefect','miApply','bomApply','rlApply','riCommit','routeGo'].filter(n=>typeof window[n]==='function');
 const RO_RE=new RegExp('\\b('+RO_FN.join('|')+')\\(|\\b(edit(Defect|Ncr|Sup|Part))\\(\\)');
 const RO_ACT=new Set(['czNav','open','filtq','csv','tab','report','gotoTab','filt','actFilt']);
