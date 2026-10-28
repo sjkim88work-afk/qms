@@ -608,7 +608,7 @@ function defaultDB(){return{
     sources:['수입검사','공정','출하검사','고객(클레임)'],
     dispositions:['반품','선별','재작업','특채','폐기'],
     owners:[],
-    ncrRepeat:3,ncrQty:50,repeatWindow:90,requestDays:2,replyDays:7,verifyDays:21,backupDays:7,sqliteAuto:1,farDays:5,ntfDays:30,
+    ncrRepeat:3,ncrQty:50,repeatWindow:90,requestDays:2,replyDays:7,verifyDays:21,backupDays:7,sqliteAuto:1,shareNoMaster:1,farDays:5,ntfDays:30,
     laborRate:30000,fx:{USD:1400,EUR:1610,CNY:195,JPY:9.3,MXN:75,INR:16.5,VND:0.055},fxDate:'',gradeA:100,gradeB:500,gradeC:1000,photoMax:1600,photoQ:80,backupKeep:30,backupPhotos:1,company:'',dept:'',logo:'',ncrFormat:'NCR-{YY}{MM}-{SEQ3}',issuerPhone:'',issuerEmail:'',approver:'',signs:{},evalPass:80,evalCond:60,sevA:12,sevB:8,reply8D:7,replySimple:5,d3Days:1,escCount:2,ppmScar:1000,ppmScarMonths:3,impactMap:{'치수':3,'외관(스크래치)':1,'외관(찍힘/변형)':2,'이물':2,'녹/부식':2,'기능불량':3,'소음/NVH':3,'오삽/혼입':3,'누락/결품':3,'포장불량':1,'기타':2}
   },
   suppliers:[],parts:[],defects:[],ncrs:[],receipts:[],reviews:[],cases:[],actions:[],deleted:[],bom:{updatedAt:'',rows:[]}
@@ -1169,14 +1169,14 @@ const state={setTab:'general',tab:'dash',dashMonth:today().slice(0,7),
   nf:{status:'open',q:''},
   ivf:{status:'open',q:''},
   supFrom:today().slice(0,4)+'-01-01',supTo:today(),copqYear:today().slice(0,4)};
-function go(t){if(t==='prog'){t='case';if(typeof czUi!=='undefined')czUi.view='prog'}state.tab=t;render();window.scrollTo(0,0)}
+function go(t){if(t==='master'&&RO&&SHARE.meta&&SHARE.meta.noMaster)t='dash';if(t==='prog'){t='case';if(typeof czUi!=='undefined')czUi.view='prog'}state.tab=t;render();window.scrollTo(0,0)}
 function render(){
   const own=!sevMemo;if(own){sevMemo=new Map();pcMemo={}}
   try{renderInner()}finally{if(own){sevMemo=null;pcMemo=null}}
 }
 function renderInner(){
   try{czSyncAll()}catch(e){}
-  $('#nav').innerHTML=TABS.map(([k,l])=>{const n=k==='case'?czBadgeN():k==='inv'?invLateN():0;return `<button class="${state.tab===k?'on':''}" onclick="go('${k}')">${l}${n?` <span class="bg bad" style="font-size:10.5px">${n}</span>`:''}</button>`}).join('');
+  $('#nav').innerHTML=TABS.filter(([k])=>!(k==='master'&&RO&&SHARE.meta&&SHARE.meta.noMaster)).map(([k,l])=>{const n=k==='case'?czBadgeN():k==='inv'?invLateN():0;return `<button class="${state.tab===k?'on':''}" onclick="go('${k}')">${l}${n?` <span class="bg bad" style="font-size:10.5px">${n}</span>`:''}</button>`}).join('');
   $('#dlParts').innerHTML=db.parts.map(p=>`<option value="${esc(p.partNo)}">${esc(p.name)} · ${esc(supName(p.supplierId))}</option>`).join('');
   $('#dlOwners').innerHTML=db.settings.owners.map(o=>`<option value="${esc(o)}">`).join('');
   $('#dlSources').innerHTML=db.settings.sources.map(o=>`<option value="${esc(o)}">`).join('');
@@ -1197,7 +1197,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.4.1';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4.2';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4440,7 +4440,7 @@ function renderData(){
         `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('지금 백업','exportJSON(true)','p')}${btn('백업 폴더에서 복원','restoreFromFolder()')}</span>`))+
     sg('공유 · 내보내기',
       sv(tip('읽기 전용 공유','지금 데이터를 HTML 파일 하나로 만듭니다. 받은 사람은 보기 · 검색 · 출력만 되고 수정 · 저장은 안 됩니다. 파일 안에 데이터가 그대로 들어 있으니 받을 사람을 가려서 보내세요.'),'',
-        `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('사진 포함','makeShareFile(true)')}${btn('사진 제외','makeShareFile(false)')}</span>`)+
+        `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center"><label class="row" style="gap:5px;font-size:12.5px" title="협력사 연락처 · 주소 · 단가 · BOM · 기록에 안 쓰인 협력사 · 부품을 빼고, 기록에 쓰인 협력사 · 부품 이름만 남깁니다. 기준정보 탭도 숨깁니다."><input type="checkbox" ${num(db.settings.shareNoMaster)!==0?'checked':''} onchange="db.settings.shareNoMaster=this.checked?1:0;save()"> 기준정보 빼기</label>${btn('사진 포함','makeShareFile(true)')}${btn('사진 제외','makeShareFile(false)')}</span>`)+
       sv(tip('SQL로 조회 (QIS.sqlite)','SQLite DB 파일로 만듭니다 — DB Browser for SQLite로 열거나 Excel · Power BI에서 SQLite ODBC로 연결합니다. 표: suppliers · parts · defects · defect_costs · ncrs · receipts · bom_rows · supplier_month(월 PPM) 등, 조회: v_defects · v_ncr_open · v_monthly, x_ 열은 앱이 계산한 값. 읽기용 사본입니다.'),'',
         btn(backupDir||lazyH.backupDir?'만들기 (폴더에 저장)':'만들기 (다운로드)','exportSqlite()')))+
     `<details class="sadv" ${advOpen?'open':''} ontoggle="if(state.setAdv!==this.open){state.setAdv=this.open;if(this.open){const y=window.scrollY;render();window.scrollTo(0,y)}}"><summary>고급 설정</summary>`+
@@ -4465,14 +4465,27 @@ function renderData(){
   return `<div class="set"><aside class="snav">${nav}</aside><section class="spane"><div class="row" style="margin-bottom:6px"><h2>${title}</h2><span style="flex:1"></span><span id="setSaved" class="muted" style="opacity:0;transition:opacity .4s;font-size:12px"></span></div>${(P[tab]||P.general)()}<div class="help" style="margin:-8px 4px 20px">설정은 값을 바꾸면 바로 저장됩니다.</div></section></div>`;
 }
 // 읽기 전용 공유 파일: 이 앱 + 지금 데이터(사진 포함)를 HTML 파일 하나로
+// 공유본에서 기준정보 빼기: 기록(불량 · NCR · 입고)에 쓰인 협력사 · 부품의 이름만 남기고
+// 연락처 · 주소 · 담당자 이력 · 단가 · 주요 품목 · BOM · 기록에 안 쓰인 협력사 · 부품은 넣지 않음
+function shareStrip(src){
+  const d=JSON.parse(JSON.stringify(src));
+  const recs=[...d.defects,...d.ncrs,...d.receipts,...(d.cases||[])];
+  const supIds=new Set(recs.map(r=>r.supplierId||r.SupplierId).filter(Boolean));
+  const pIds=new Set(recs.map(r=>r.partId||r.PartId).filter(Boolean)),pNos=new Set(recs.map(r=>r.partNo).filter(Boolean).map(mkey));
+  d.parts=d.parts.filter(p=>pIds.has(p.id)||pNos.has(mkey(p.partNo))).map(p=>({id:p.id,partNo:p.partNo,name:p.name,model:p.model,supplierId:p.supplierId,safety:p.safety}));
+  d.parts.forEach(p=>{if(p.supplierId)supIds.add(p.supplierId)});
+  d.suppliers=d.suppliers.filter(x=>supIds.has(x.id)).map(x=>({id:x.id,code:x.code,name:x.name,short:x.short,country:x.country,region:x.region,contacts:[],contactLog:[]}));
+  d.bom={updatedAt:'',fg:{},rows:[]};
+  return d;
+}
 async function makeShareFile(withPhotos){
   if(!APP_SRC||!APP_SRC.includes('<head>')){toast('이 화면에서는 공유 파일을 만들 수 없습니다');return}
   let photos=[];if(withPhotos){try{photos=(await photoList()).filter(p=>p&&!phIsPending(p))}catch(e){toast('사진을 읽지 못해 사진 없이 만듭니다')}}
-  const S=db.settings,meta={created:now(),by:(S.owners||[])[0]||'',company:S.company||'',ver:typeof APP_VER!=='undefined'?APP_VER:'',photos:photos.length};
-  const data=JSON.stringify({meta,db,photos}).replace(/</g,'\\u003c');
+  const S=db.settings,noMaster=num(S.shareNoMaster)!==0,meta={created:now(),by:(S.owners||[])[0]||'',company:S.company||'',ver:typeof APP_VER!=='undefined'?APP_VER:'',photos:photos.length,noMaster};
+  const data=JSON.stringify({meta,db:noMaster?shareStrip(db):db,photos}).replace(/</g,'\\u003c');
   const html=APP_SRC.replace('<head>','<head>\n<script id="qmsShare" type="application/json">'+data+'<\/script>');
-  download(`QMS_읽기전용_${today()}${withPhotos?'':'_사진제외'}.html`,html,'text/html;charset=utf-8');
-  toast(`읽기 전용 공유 파일 ${(html.length/1048576).toFixed(1)}MB를 만들었습니다 — 메일 · Teams · 공유 폴더로 보내세요`);
+  download(`QIS_읽기전용_${today()}${withPhotos?'':'_사진제외'}.html`,html,'text/html;charset=utf-8');
+  toast(`읽기 전용 공유 파일 ${(html.length/1048576).toFixed(1)}MB를 만들었습니다${noMaster?' (기준정보 제외)':''} — 메일 · Teams · 공유 폴더로 보내세요`);
 }
 async function exportJSON(withPhotos=true){
   if(withPhotos===true&&(backupDir||lazyH.backupDir)){
@@ -6125,7 +6138,7 @@ if(RO){
   new MutationObserver(roFoot).observe($('#mfoot'),{childList:true});
   document.documentElement.classList.add('ro');
   const m=SHARE.meta||{};
-  document.querySelector('nav').insertAdjacentHTML('afterend',`<div class="roBar noprint">📖 <b>읽기 전용 사본</b> — ${esc(m.company||'')} ${esc(m.by||'')} · 기준 <b>${esc(loc(m.created)||'-')}</b> · ver ${esc(m.ver||'')}${m.photos!=null?` · 사진 ${m.photos}장`:''} <span class="muted">— 보기 · 검색 · 출력만 됩니다. 고친 내용은 저장되지 않습니다.</span></div>`);
+  document.querySelector('nav').insertAdjacentHTML('afterend',`<div class="roBar noprint">📖 <b>읽기 전용 사본</b> — ${esc(m.company||'')} ${esc(m.by||'')} · 기준 <b>${esc(loc(m.created)||'-')}</b> · ver ${esc(m.ver||'')}${m.photos!=null?` · 사진 ${m.photos}장`:''}${m.noMaster?' · 기준정보 제외':''} <span class="muted">— 보기 · 검색 · 출력만 됩니다. 고친 내용은 저장되지 않습니다.</span></div>`);
   ['hdrBk','hdrInstall'].forEach(i=>{const e=$('#'+i);if(e)e.style.display='none'});
 }
 bootReady.then(()=>{
