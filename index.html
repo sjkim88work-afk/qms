@@ -1169,14 +1169,17 @@ const state={setTab:'general',tab:'dash',dashMonth:today().slice(0,7),
   nf:{status:'open',q:''},
   ivf:{status:'open',q:''},
   supFrom:today().slice(0,4)+'-01-01',supTo:today(),copqYear:today().slice(0,4)};
-function go(t){if(t==='master'&&RO&&SHARE.meta&&SHARE.meta.noMaster)t='dash';if(t==='prog'){t='case';if(typeof czUi!=='undefined')czUi.view='prog'}state.tab=t;render();window.scrollTo(0,0)}
+// 읽기 전용 공유본에서 보이는 화면 (협력사 품질 · 기준정보 · 설정 · 백업은 숨김)
+const RO_TABS=['dash','defect','inv','ncr','case','copq'];
+function go(t){if(RO&&!RO_TABS.includes(t)&&t!=='prog')t='dash';if(t==='prog'){t='case';if(typeof czUi!=='undefined')czUi.view='prog'}state.tab=t;render();window.scrollTo(0,0)}
 function render(){
   const own=!sevMemo;if(own){sevMemo=new Map();pcMemo={}}
   try{renderInner()}finally{if(own){sevMemo=null;pcMemo=null}}
 }
 function renderInner(){
+  if(RO&&!RO_TABS.includes(state.tab)&&state.tab!=='prog')state.tab='dash';  // 공유본: 허용한 화면만
   try{czSyncAll()}catch(e){}
-  $('#nav').innerHTML=TABS.filter(([k])=>!(k==='master'&&RO&&SHARE.meta&&SHARE.meta.noMaster)).map(([k,l])=>{const n=k==='case'?czBadgeN():k==='inv'?invLateN():0;return `<button class="${state.tab===k?'on':''}" onclick="go('${k}')">${l}${n?` <span class="bg bad" style="font-size:10.5px">${n}</span>`:''}</button>`}).join('');
+  $('#nav').innerHTML=TABS.filter(([k])=>!RO||RO_TABS.includes(k)).map(([k,l])=>{const n=k==='case'?czBadgeN():k==='inv'?invLateN():0;return `<button class="${state.tab===k?'on':''}" onclick="go('${k}')">${l}${n?` <span class="bg bad" style="font-size:10.5px">${n}</span>`:''}</button>`}).join('');
   $('#dlParts').innerHTML=db.parts.map(p=>`<option value="${esc(p.partNo)}">${esc(p.name)} · ${esc(supName(p.supplierId))}</option>`).join('');
   $('#dlOwners').innerHTML=db.settings.owners.map(o=>`<option value="${esc(o)}">`).join('');
   $('#dlSources').innerHTML=db.settings.sources.map(o=>`<option value="${esc(o)}">`).join('');
@@ -1197,7 +1200,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.4.2';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4.3';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
