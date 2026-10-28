@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>개인 QMS</title>
+<title>QIS</title>
 <!-- 설치형 앱(PWA): 웹 주소(https)로 열었을 때 ‘앱으로 설치’ · 오프라인 실행. 파일로 직접 열면 지금처럼 동작 -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1d4f73">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="application-name" content="개인 QMS">
+<meta name="application-name" content="QIS">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -343,7 +343,7 @@ body{font-family:var(--f-body);font-size:13.5px;line-height:1.5}
 @media screen{
   header{background:var(--card);color:var(--ink);border-bottom:1px solid var(--line);padding:12px 22px;gap:14px}
   header h1{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
-  header h1::before{content:"Quality Management System";display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);font-weight:600;margin-bottom:2px}
+  header h1::before{content:"QIS · Quality Information System";display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);font-weight:600;margin-bottom:2px}
   header small{opacity:1;color:var(--sub);font-size:12px}
   .brandlogo{background:transparent;padding:0;border-radius:0}
   nav{background:var(--card);padding:0 16px;gap:4px;position:sticky;top:0;z-index:40}
@@ -496,7 +496,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 <body>
 <header>
   <span id="brand"></span>
-  <h1 id="appTitle">개인 QMS</h1>
+  <h1 id="appTitle">QIS</h1>
   <small id="saveInfo"></small>
   <span class="sp"></span>
   <small id="linkInfo"></small>
@@ -1195,12 +1195,12 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.4';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.7';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
-  $('#appTitle').innerHTML=`${esc(S.company?S.company+' 품질관리':'개인 QMS')} <span style="font:600 11px/1 var(--f-mono,monospace);color:var(--sub);vertical-align:middle">ver ${APP_VER}</span>`;
-  document.title=(RO?'[읽기 전용] ':'')+(S.company?S.company+' QMS':'개인 QMS');
+  $('#appTitle').innerHTML=`${esc(S.company?S.company+' 품질관리':'QIS')} <span style="font:600 11px/1 var(--f-mono,monospace);color:var(--sub);vertical-align:middle">ver ${APP_VER}</span>`;
+  document.title=(RO?'[읽기 전용] ':'')+(S.company?S.company+' 품질관리':'QIS');  // 설치 앱 창 제목: ‘QIS - 회사 품질관리’
   $('#printHead').innerHTML=`${S.logo?`<img src="${S.logo}" alt="">`:''}<div class="t"><b>${esc(S.company||'품질관리')} — ${esc(tab)}${state.tab==='dash'?' ('+esc(state.dashMonth)+')':''}</b><span>${esc(S.dept)}</span></div><div class="d">출력일 ${today()}</div>`;
 }
 function logoHead(){const S=db.settings;return (S.logo||S.company)?`<div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid #14213d;padding-bottom:8px;margin-bottom:12px">${S.logo?`<img src="${S.logo}" style="max-height:44px;max-width:180px;object-fit:contain">`:''}<div style="flex:1"><b style="font-size:15px">${esc(S.company)}</b><br><span style="font-size:11px;color:#555">${esc(S.dept)}</span></div><div style="font-size:11px;color:#555">출력일 ${today()}</div></div>`:''}
@@ -1513,7 +1513,7 @@ function renderDash(){
   ds.forEach(d=>{const s=supName(d.supplierId)||'(미지정)';supMap[s]=(supMap[s]||0)+num(d.qty);typeMap[d.type||'(미지정)']=(typeMap[d.type||'(미지정)']||0)+1});
   let banner='';
   const total=COLLS.reduce((a,c)=>a+db[c].length,0);
-  if(!total&&/^https?:$/.test(location.protocol))banner=`<div class="banner">📦 <b>파일(개인 QMS.html)로 쓰던 데이터가 있나요?</b> 그 파일을 열어 화면 위 <b>백업</b>을 누른 뒤, 여기서 <button class="b s p" onclick="pickImport('replace')">백업 파일로 복원</button>하면 사진까지 그대로 옮겨집니다. <span class="muted">처음 쓰는 경우에는 <b>기준정보</b>에서 협력사·부품을 등록하세요.</span></div>`;
+  if(!total&&/^https?:$/.test(location.protocol))banner=`<div class="banner">📦 <b>예전 HTML 파일로 쓰던 데이터가 있나요?</b> 그 파일을 열어 화면 위 <b>백업</b>을 누른 뒤, 여기서 <button class="b s p" onclick="pickImport('replace')">백업 파일로 복원</button>하면 사진까지 그대로 옮겨집니다. <span class="muted">처음 쓰는 경우에는 <b>기준정보</b>에서 협력사·부품을 등록하세요.</span></div>`;
   else if(!total)banner=`<div class="banner">데이터가 비어 있습니다. <b>기준정보</b>에서 협력사·부품을 등록하거나(엑셀 붙여넣기 지원), <b>불량 관리</b>에서 불량을 등록하세요. 기존 백업 파일이 있으면 <a class="lk" onclick="state.setTab='backup';go('data')">설정·백업</a>에서 복원할 수 있습니다.</div>`;
   const li=(arr,fn)=>arr.length?arr.slice(0,8).map(fn).join('')+(arr.length>8?`<li class="muted">외 ${arr.length-8}건</li>`:''):'';
   const own=x=>!czOwns(x.n,'ncr'),ownD=d=>!czOwns(d,'defect');
@@ -1650,10 +1650,12 @@ function editDefect(id,copy){
   <div class="fgrp"><div class="gh">불량</div><div class="fg fg4">
     <label>불량유형<select name="type">${opts(S.defectTypes,d.type)}</select></label>
     <label><span class="lt" id="lbQty">불량수량</span><input type="number" min="0" name="qty" value="${esc(d.qty)}"></label>
-    <label><span class="lt" id="lbInsp">검사/입고수량</span><input type="number" min="0" name="inspQty" value="${esc(d.inspQty)}"></label>
+    <label><span class="lt" id="lbInsp">입고수량 (로트)</span><input type="number" min="0" name="inspQty" value="${esc(d.inspQty)}"></label>
     <label>진행 단계 (자동)<span style="padding:4px 0">${id?stageBadges(db.defects.find(x=>x.id===id)).replace('<br>',' '):'<span class="bg warn">처리 대기</span>'}</span></label>
   </div></div>
   <div class="fg">
+    <label style="grid-column:span 2" title="NCR 통보서의 Specification(도면사양) 칸으로 들어갑니다">도면 규격 (Specification)<textarea name="spec" style="min-height:44px" placeholder="예: Ø12.0 ±0.05 / 작동력 3 ~ 5 N / 스크래치 없을 것">${esc(d.spec)}</textarea></label>
+    <label style="grid-column:span 2" title="NCR 통보서의 Actual(실제) 칸으로 들어갑니다">실측 · 실제 (Actual)<textarea name="actual" style="min-height:44px" placeholder="예: Ø12.12 (n=5 중 최대) / 작동력 8.2 N / 길이 3mm 스크래치">${esc(d.actual)}</textarea></label>
     <label class="full">불량 내용 (현상)<textarea name="desc">${esc(d.desc)}</textarea></label>
     <label class="full">임시조치 (봉쇄 · 재고 처리)<textarea name="containment">${esc(d.containment)}</textarea></label>
     <label>처리<select name="disposition">${opts(S.dispositions,d.disposition,true)}</select></label>
@@ -1967,7 +1969,7 @@ async function printFar(id,w0){
   <table>${row('발생일 / 발생처',`${esc(d.date)} / ${esc(d.source)}`)}
   ${d.fgNo||d.fgName?row('발견 품목 (완성품)',`${esc(d.fgNo)} ${esc(d.fgName)}${d.fgQty!==''&&d.fgQty!=null?` · ${num(d.fgQty).toLocaleString()} EA`:''}`):''}
   ${row('대상 부품 (추정)',d.partNo||d.partName?`${esc(d.partNo)} ${esc(d.partName)}`:'조사 중')}
-  ${row('불량 유형 / 수량',`${esc(d.type)} / ${num(d.qty).toLocaleString()} EA${d.inspQty?` (검사 ${num(d.inspQty).toLocaleString()} EA)`:''}`)}
+  ${row('불량 유형 / 수량',`${esc(d.type)} / ${num(d.qty).toLocaleString()} EA${d.inspQty?` (로트 ${num(d.inspQty).toLocaleString()} EA 중)`:''}`)}
   ${row('LOT / 납품일자',esc(lotOf(d)))}
   ${row('불량 현상',nl(d.desc))}
   ${row('당사 임시조치',nl(d.containment))}
@@ -2308,9 +2310,11 @@ function srcLayout(){
   set('grpPartH',inc?'입고 부품 (불량 부품)':'원인 · 의심 부품');
   $('#grpPartS').textContent=inc?'수입검사 — 검사한 부품이 곧 불량 부품입니다':'확인 전이면 의심 부품을 넣거나 비워 두면 ‘조사 중’';
   set('lbPn',inc?'부품번호':'원인·의심 부품번호');set('lbPm',inc?'부품명':'원인·의심 부품명');
-  set('lbDv',inc?'입고(납품)일자':'원인 부품 납품일자');set('lbQty',inc?'불량수량':'불량수량 (원인 부품 기준)');set('lbInsp',inc?'검사/입고수량':'검사수량');
+  set('lbDv',inc?'입고(납품)일자':'원인 부품 납품일자');set('lbQty',inc?'불량수량':'불량수량 (원인 부품 기준)');lbInsp();
   f.partNo.placeholder=inc?'번호·품명·협력사로 검색':'번호·품명·협력사로 검색 (모르면 비움 → 조사 중)';
 }
+// 불량률 · PPM의 모수: 원인 부품의 입고(로트) 수량 — 입고 건을 연결했거나 수입검사면 ‘입고수량’, 아니면 생산 · 투입수량도 허용
+function lbInsp(){const f=$('#mf'),e=$('#lbInsp');if(!f||!e)return;const inc=f.source&&/수입/.test(f.source.value),t=inc||curRcvId?'입고수량 (로트)':'입고(로트) · 생산수량';e.textContent=t;e.title='불량률 · PPM 계산의 모수 — 불량이 나온 원인 부품의 입고(로트) 수량. 입고 건을 연결하면 자동으로 채워집니다'}
 function onPartNo(v){
   const p=partByNo(v.trim());
   if(p){const f=$('#mf'),fgM=f.fgNo&&bomIx().byFg.has(f.fgNo.value.trim())&&bomFg(f.fgNo.value.trim()).model;f.partName.value=p.name||'';if(p.model&&!fgM)f.model.value=p.model;if(p.supplierId)f.supplierId.value=p.supplierId}  // 완성품의 BOM 차종이 있으면 그것을 유지
@@ -2450,8 +2454,8 @@ async function delDefect(id){
 }
 function exportDefectsCSV(){
   const ds=filteredDefects();
-  const head=['발생일','발생처','심각도','심각도점수','대응수준','완성품 품번','완성품명','완성품 수량','원인 부품번호','원인 부품명','차종','협력사','불량유형','불량수량','검사수량','납품일자','불량내용','임시조치','처리','귀책',...COST_CATS.map(c=>c+'비'),'비용합계','구상상태','청구액','회수액','미회수','NCR번호','담당자','진행단계','유효성검증','처리완료일','수동종결사유','FAR요청일','FAR회신기한','FAR회신일','FAR결과','사내RCA','귀책판정','판정일','협력사부담%','사내대책수준','사내대책완료일','표준화반영','진행기록'];
-  downloadCSV(`불량목록_${today()}.csv`,[head,...ds.map(d=>{const v=sevOf(d);return [d.date,d.source,v.grade,v.score,v.resp,d.fgNo||'',d.fgName||'',d.fgQty??'',d.partNo,d.partName,d.model,supName(d.supplierId),d.type,d.qty,d.inspQty,d.delivDate||d.lot,d.desc,d.containment,d.disposition,d.resp,...COST_CATS.map(c=>(d.costs||[]).filter(x=>x.cat===c).reduce((a,x)=>a+num(x.amt),0)),costTotal(d),claimStatus(d),d.claim?.reqAmt??'',d.claim?.recvAmt??'',outstanding(d),db.ncrs.find(n=>n.id===d.ncrId)?.no||'',d.owner,defStage(d).label,(()=>{const n=d.ncrId&&db.ncrs.find(x=>x.id===d.ncrId);return n&&isDone(d)?verifyInfo(n).label:(icaVerify(d)?.label||'')})(),d.doneDate||'',d.closed?.reason||'',
+  const head=['발생일','발생처','심각도','심각도점수','대응수준','완성품 품번','완성품명','완성품 수량','원인 부품번호','원인 부품명','차종','협력사','불량유형','불량수량','입고(로트)수량','납품일자','도면 규격','실측','불량내용','임시조치','처리','귀책',...COST_CATS.map(c=>c+'비'),'비용합계','구상상태','청구액','회수액','미회수','NCR번호','담당자','진행단계','유효성검증','처리완료일','수동종결사유','FAR요청일','FAR회신기한','FAR회신일','FAR결과','사내RCA','귀책판정','판정일','협력사부담%','사내대책수준','사내대책완료일','표준화반영','진행기록'];
+  downloadCSV(`불량목록_${today()}.csv`,[head,...ds.map(d=>{const v=sevOf(d);return [d.date,d.source,v.grade,v.score,v.resp,d.fgNo||'',d.fgName||'',d.fgQty??'',d.partNo,d.partName,d.model,supName(d.supplierId),d.type,d.qty,d.inspQty,d.delivDate||d.lot,d.spec||'',d.actual||'',d.desc,d.containment,d.disposition,d.resp,...COST_CATS.map(c=>(d.costs||[]).filter(x=>x.cat===c).reduce((a,x)=>a+num(x.amt),0)),costTotal(d),claimStatus(d),d.claim?.reqAmt??'',d.claim?.recvAmt??'',outstanding(d),db.ncrs.find(n=>n.id===d.ncrId)?.no||'',d.owner,defStage(d).label,(()=>{const n=d.ncrId&&db.ncrs.find(x=>x.id===d.ncrId);return n&&isDone(d)?verifyInfo(n).label:(icaVerify(d)?.label||'')})(),d.doneDate||'',d.closed?.reason||'',
       d.inv?.farReq||'',d.inv?.farDue||'',d.inv?.farRecv||'',d.inv?.farResult||'',d.inv?.rca||'',d.inv?.verdict||'',d.inv?.verdictDate||'',d.inv?.share??'',d.resp==='사내'?icaLevel(d):'',d.ica?.doneDate||'',ICA_STD.filter(([k])=>d.ica?.std?.[k]).map(x=>x[1]).join(', '),(d.logs||[]).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(l=>`[${l.date} ${l.kind}] ${l.text}`).join('\n')]})]);
 }
 
@@ -2528,8 +2532,10 @@ const IMP_FIELDS=[
   ['supplier','협력사',['협력사','협력사명','업체','업체명','공급사','납품업체']],
   ['type','불량유형',['불량유형','유형','불량명','불량구분','불량항목']],
   ['qty','불량수량',['불량수량','불량수','수량','불량qty']],
-  ['inspQty','검사/생산수량',['검사수량','생산수량','투입수량','입고수량','작업수량']],
+  ['inspQty','입고(로트) · 생산수량',['입고수량','로트수량','검사수량','생산수량','투입수량','작업수량']],
   ['delivDate','납품일자',['납품일자','납품일','입고일자','입고일','lot','lotno','로트','로트번호']],
+  ['spec','도면 규격',['도면규격','규격','도면사양','사양','spec','specification','기준']],
+  ['actual','실측',['실측','실측값','측정값','실제','actual','결과값']],
   ['desc','불량내용',['불량내용','내용','현상','상세내용','비고']],
   ['containment','임시조치',['임시조치','조치','조치내용','조치사항']],
   ['disposition','처리',['처리','처리방법','처분','판정']],
@@ -2634,7 +2640,7 @@ function impBuild(){
     const disp=String(o.disposition??'').trim();
     const st=String(o.status??'').trim();
     const d={date:date||'',source:String(o.source??'').trim()||defs.source,partNo,partName,...(fgNo||fgName?{fgNo,fgName,fgQty:String(o.fgQty??'').trim()!==''?numC(o.fgQty):''}:{}),model:String(o.model??'').trim()||part?.model||'',supplierId:sup?.id||'',
-      type:type||'기타',qty,inspQty:o.inspQty!==undefined&&String(o.inspQty).trim()!==''?numC(o.inspQty):'',...(()=>{const raw=String(o.delivDate??'').trim(),pd=raw?parseDateAny(typeof o.delivDate==='number'?o.delivDate:raw):'';return pd?{delivDate:pd}:{lot:raw}})(),desc:String(o.desc??'').trim(),containment:String(o.containment??'').trim(),
+      type:type||'기타',qty,inspQty:o.inspQty!==undefined&&String(o.inspQty).trim()!==''?numC(o.inspQty):'',...(()=>{const raw=String(o.delivDate??'').trim(),pd=raw?parseDateAny(typeof o.delivDate==='number'?o.delivDate:raw):'';return pd?{delivDate:pd}:{lot:raw}})(),desc:String(o.desc??'').trim(),spec:String(o.spec??'').trim(),actual:String(o.actual??'').trim(),containment:String(o.containment??'').trim(),
       disposition:disp,resp:String(o.resp??'').trim()||defs.resp,owner:String(o.owner??'').trim()||defs.owner,
       ...(/^(완료|종결|closed?|y|yes|o|done)$/i.test(String(st||'').trim())?{doneDate:date||''}:{}),hours:o.hours!==undefined&&String(o.hours).trim()!==''?numC(o.hours):''};
     const k=dupKey(d);let dup=false;if(!err.length&&(exist.has(k)||seen.has(k))){dup=true;warn.push(exist.has(k)?'이미 등록됨':'파일 내 중복')}seen.add(k);
@@ -2687,10 +2693,10 @@ async function ncrFromDefect(id,extra=[]){
   const fg=d.fgNo||d.fgName?`완성품 ${[d.fgNo,d.fgName].filter(Boolean).join(' ')} 에서 발견${d.fgQty?` (${num(d.fgQty).toLocaleString()}대)`:''}`:'';
   const iv=d.inv||{},invTxt=[iv.farResult&&'[FAR] '+iv.farResult,iv.rca&&'[사내 RCA] '+iv.rca].filter(Boolean).join('\n');
   editNcr(null,{supplierId:d.supplierId,partNo:d.partNo,partName:d.partName,title:`${d.type||''} - ${d.partName||d.partNo||''}`,
-    d2:`[${d.date} / ${d.source}]${fg?' '+fg+' —':''} ${d.desc||''}\n불량수량 ${num(d.qty)}개${d.inspQty?' / 검사 '+d.inspQty+'개':''}${lotOf(d)?' / LOT '+lotOf(d):''}`,
+    d2:`[${d.date} / ${d.source}]${fg?' '+fg+' —':''} ${d.desc||''}\n불량수량 ${num(d.qty)}개${d.inspQty?' / 로트 '+d.inspQty+'개':''}${d.spec||d.actual?`\n규격: ${d.spec||'-'} / 실측: ${d.actual||'-'}`:''}${lotOf(d)?' / LOT '+lotOf(d):''}`,
     d3:d.containment||'',...(invTxt?{d4:invTxt}:{}),defectIds:grp.map(x=>x.id),
     ...(iv.farReq?{far:farFromInv(d)}:{}),issueDate:today(),owner:d.owner,reqType:RESP[worst]||sevOf(d).resp,
-    lotNo:lotOf(d),lotQty:d.inspQty||'',foundAt:d.source||'',recvDate:d.delivDate||((d.source||'').includes('수입')?d.date:''),actual:d.desc||`${d.type||''}`,defectDesc:`${d.date} ${d.source||''} ${fg?fg:'발견'} — ${d.type||''}${d.desc?': '+d.desc:''}\n불량 ${num(d.qty).toLocaleString()} EA${d.inspQty?' / '+num(d.inspQty).toLocaleString()+' EA':''}${lotOf(d)?' (LOT '+lotOf(d)+')':''}`,defectQtyText:`${num(d.qty).toLocaleString()} EA / ${d.inspQty?num(d.inspQty).toLocaleString()+' EA':'-'}`});
+    lotNo:lotOf(d),lotQty:d.inspQty||'',foundAt:d.source||'',recvDate:d.delivDate||((d.source||'').includes('수입')?d.date:''),spec:d.spec||'',actual:d.actual||'',defectDesc:`${d.date} ${d.source||''} ${fg?fg:'발견'} — ${d.type||''}${d.desc?': '+d.desc:''}\n불량 ${num(d.qty).toLocaleString()} EA${d.inspQty?' / '+num(d.inspQty).toLocaleString()+' EA':''}${lotOf(d)?' (LOT '+lotOf(d)+')':''}`,defectQtyText:`${num(d.qty).toLocaleString()} EA / ${d.inspQty?num(d.inspQty).toLocaleString()+' EA':'-'}`});
 }
 function filteredNcrs(){
   const f=state.nf,q=f.q.toLowerCase();
@@ -3463,7 +3469,7 @@ function rcvPick(id){const f=$('#mf'),r=db.receipts.find(x=>x.id===id);if(!f||!r
   if(r.supplierId&&f.supplierId&&!f.supplierId.value)f.supplierId.value=r.supplierId;mfDirty=true;rcvHint()}
 // 불량 입력 창: 같은 품번의 최근 입고 건을 보여 주고 고르면 연결
 function rcvHint(){
-  const b=$('#rcvBox'),f=$('#mf');if(!b||!f||!f.partNo)return;
+  const b=$('#rcvBox'),f=$('#mf');if(!b||!f||!f.partNo)return;lbInsp();
   const pn=f.partNo.value.trim(),linked=curRcvId&&db.receipts.find(x=>x.id===curRcvId);
   const L=pn?db.receipts.filter(x=>isLine(x)&&x.partNo===pn).sort((a,c)=>(c.date||'').localeCompare(a.date||'')).slice(0,8):[];
   const lab=r=>`${esc(r.date)} · ${esc(r.docNo)}${r.seq?'-'+esc(r.seq):''}${r.inspNo?` · 검사 ${esc(r.inspNo)}`:''} · ${num(r.qty).toLocaleString()}${esc(r.unit||'')}${r.verdict?` · ${esc(r.verdict)}`:''}`;
@@ -3471,7 +3477,7 @@ function rcvHint(){
   if(linked){b.innerHTML=`${hid}<div class="bomx"><b>🚚 연결된 입고</b> ${lab(linked)} — ${esc(supName(linked.supplierId))} <a class="lk" onclick="curRcvId='';rcvHint();mfDirty=true">연결 해제</a></div>`;return}
   if(!L.length){b.innerHTML=hid;return}
   const src=f.source?f.source.value:'';
-  b.innerHTML=`${hid}<div class="bomx"><b>🚚 이 품번의 최근 입고</b> <span class="muted">— ${src==='수입검사'?'검사한 입고 건을 고르면':'관련 입고 건을 고르면'} 납품일자 · 검사수량이 채워지고 거래명세서 · 검사번호가 연결됩니다</span>
+  b.innerHTML=`${hid}<div class="bomx"><b>🚚 이 품번의 최근 입고</b> <span class="muted">— ${src==='수입검사'?'검사한 입고 건을 고르면':'관련 입고 건을 고르면'} 납품일자 · 입고수량이 채워지고 거래명세서 · 검사번호가 연결됩니다</span>
     <div class="bomc">${L.map(r=>`<span class="bchip" onclick="rcvPick('${r.id}')">${lab(r)}</span>`).join('')}</div></div>`;
 }
 /* ---- 입고수량 파일 업로드 ---- */
@@ -4390,7 +4396,7 @@ function renderData(){
     sv('강제 A 조건','특별특성(CC/SC), 고객 클레임, 대책 후 재발, 영향도 4(안전·법규)는 점수와 관계없이 A입니다.','<span class="bg bad">고정 규칙</span>'))+
     sg('자동 산정 기준',sv('반복 판정 기간','같은 협력사·같은 유형 불량을 이 기간 안에서 셉니다.',sNum('repeatWindow','일',7,365))+
       sv('반복성 3점 기준','기간 내 이 횟수 이상이면 반복성 3점(3회 이상)입니다.',sNum('ncrRepeat','회',2,10))+
-      sv('발생 범위 ‘LOT 전체’ 기준','불량 수량이 이 값 이상이거나 검사수량의 10% 이상이면 발생 범위 3점입니다.',sNum('ncrQty','개',1)))+
+      sv('발생 범위 ‘LOT 전체’ 기준','불량 수량이 이 값 이상이거나 입고(로트)수량의 10% 이상이면 발생 범위 3점입니다.',sNum('ncrQty','개',1)))+
     sg('불량유형별 기본 영향도',S.defectTypes.map(t=>sv(esc(t),'',`<select onchange="setImpact(${jsq(t)},this.value)">${SEV_F.impact[1].map((l,i)=>`<option value="${i+1}" ${impactAuto(t)===i+1?'selected':''}>${i+1} · ${l}</option>`).join('')}</select>`)).join(''));
   P.docno=()=>{
     const row=k=>{const d=DOCNO[k],r=db.settings[d.rk]||(k==='ncr'?'auto':'none');
@@ -5819,7 +5825,7 @@ async function a3Report(kind,id){
     ds.length>1?`동일 문제 ${ds.length}건 (${ds[0].date} ~ ${ds[ds.length-1].date})`:'',
     cost?`실패비용 ${won(cost)}원${os?` · 구상 미회수 ${won(os)}원`:''}`:'');
   // 2 현상 (무엇이 · 어디서 · 얼마나)
-  const cur=T(d&&`불량: ${d.type||''} ${qty.toLocaleString()}개${d.inspQty?` / 검사 ${num(d.inspQty).toLocaleString()}개 (${(qty/num(d.inspQty)*100).toFixed(2)}%)`:''}`,
+  const cur=T(d&&`불량: ${d.type||''} ${qty.toLocaleString()}개${d.inspQty?` / 로트 ${num(d.inspQty).toLocaleString()}개 (${(qty/num(d.inspQty)*100).toFixed(2)}%)`:''}`,
     d&&`부품: ${d.partNo||'(조사 중)'} ${d.partName||''}${sup?' · '+sup:''}${lotOf(d)?' · LOT '+lotOf(d):''}`,
     ds.map(x=>x.desc).filter(Boolean).slice(0,2).join(' / ')||(c&&c.Description)||'',
     T(d&&d.containment&&`임시조치: ${d.containment}`,c&&(c.QtyStock||c.QtyCustomer)?`격리: 재고 ${c.QtyStock||0} · 재공 ${c.QtyWIP||0} · 이송 ${c.QtyTransit||0} · 고객처 ${c.QtyCustomer||0}`:'',d&&d.disposition?`처리: ${d.disposition}`:''));
@@ -5901,7 +5907,7 @@ async function a3Report(kind,id){
     ${sec(7,'표준화 · 후속 (Follow-up)',pre(fol))}
     <div class="two">${sec('₩','실패비용 · 구상',costTxt)}${sec('⏱','주요 경과',tl?`<table class="tl">${tl}</table>`:'기록 없음')}</div>
   </div></div>
-  <div class="ft"><span>${esc(S.company||'')} ${esc(S.dept||'')} · 개인 QMS 자동 작성</span><span>불량 ${ds.length}건 기준${n?' · '+esc(n.no):''}${c?' · '+esc(c.CaseNo):''}</span></div>
+  <div class="ft"><span>${esc(S.company||'')} ${esc(S.dept||'')} · QIS 자동 작성</span><span>불량 ${ds.length}건 기준${n?' · '+esc(n.no):''}${c?' · '+esc(c.CaseNo):''}</span></div>
   </div></body></html>`;
   reportShow(w,html,`A3보고서_${(c&&c.CaseNo)||(n&&n.no)||(d&&d.date)||today()}.html`);
 }
@@ -5963,7 +5969,7 @@ const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||
 let pwaPrompt=null;
 if(!RO&&isWebApp&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(e=>console.warn('서비스 워커 등록 실패',e));
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaPrompt=e;const b=$('#hdrInstall');if(b&&!isStandalone())b.style.display=''});
-window.addEventListener('appinstalled',()=>{pwaPrompt=null;const b=$('#hdrInstall');if(b)b.style.display='none';toast('앱으로 설치했습니다 — 바탕화면 · 시작 메뉴의 ‘개인 QMS’로 여세요')});
+window.addEventListener('appinstalled',()=>{pwaPrompt=null;const b=$('#hdrInstall');if(b)b.style.display='none';toast('앱으로 설치했습니다 — 바탕화면 · 시작 메뉴의 ‘QIS’로 여세요')});
 async function pwaInstall(){
   if(!pwaPrompt){toast('브라우저 메뉴(⋯) → 앱 → ‘이 사이트를 앱으로 설치’를 누르세요');return}
   pwaPrompt.prompt();try{await pwaPrompt.userChoice}catch(e){}pwaPrompt=null;$('#hdrInstall').style.display='none';
