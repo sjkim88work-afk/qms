@@ -489,6 +489,7 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 .btg{display:inline-block;width:16px;color:var(--sub);cursor:pointer;user-select:none}
 .b.due{background:var(--warnb);border-color:var(--warn);color:var(--warn);font-weight:600}
 .mich{background:#fff8e6}
+.bomdd summary{cursor:pointer;list-style:revert}.bomdd[open] .ddh{display:none}.bomdd tr.on td{background:#e8f1fb;font-weight:600}.bomdd tr.bpick{cursor:pointer}.bomdd tr.bpick:hover td{background:#f0f5fb}
 .roBar{background:#eef4fb;border-bottom:1px solid #c9dbef;color:#1d3b5c;padding:8px 22px;font-size:13px}
 </style>
 </head>
@@ -1194,7 +1195,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.3.3';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
+const APP_VER='0.3.4';  // 개인 QMS ver 0.1 (2026-10-26) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4142,14 +4143,20 @@ const bomUseN=p=>{const u=bomPartUse(p);return u.fgs.size+(u.fg?0.5:0)};
 function bomGo(pn){msState.bq=pn;const b=$('#msBom');if(!b)return;const i=b.parentElement.querySelector('input');if(i)i.value=pn;b.innerHTML=bomTable();b.parentElement.scrollIntoView({behavior:'smooth',block:'start'})}
 function bomImpactHTML(partNo,fgNo,pick){
   const pn=String(partNo||'').trim();if(!db.bom.rows.length||!pn)return '';
-  const used=bomIx().byPart.get(pn)||[];
+  const ix=bomIx(),k=mkey(pn);let used=[];ix.byPart.forEach((rs,p)=>{if(mkey(p)===k)used=used.concat(rs)});   // 번호 표기 차이(대소문자 · 공백 · 하이픈) 무시
   if(!used.length)return `<div class="bomx muted">📦 BOM에 없는 부품입니다 — 이 부품이 들어가는 제품을 알 수 없습니다.</div>`;
   const fgsU=[...new Set(used.map(r=>r.fgNo))];
   const models=[...new Set(fgsU.map(f=>bomFg(f).model).filter(Boolean))].sort(kcmp);
-  const fg=String(fgNo||'').trim(),notIn=fg&&bomIx().byFg.has(fg)&&!used.some(r=>r.fgNo===fg);
-  return `<div class="bomx"><b>📦 영향 범위</b> — 이 부품이 들어가는 제품 <b>${fgsU.length}개</b>${models.length?` · 차종 <b>${models.map(esc).join(', ')}</b>`:''}${pick?' <span class="muted">(누르면 완성품 품번으로 입력)</span>':''}
-    <div class="bomc">${used.slice(0,40).map(r=>`<span class="bchip${r.fgNo===fg?' on':''}" ${pick?`onclick="bomPickFg(${jsq(r.fgNo)})"`:''} title="${esc(bomFg(r.fgNo).name)}${r.parentNo&&r.parentNo!==r.fgNo?` · 상위 ${esc(r.parentNo)}`:''}">${esc(r.fgNo)}${bomFg(r.fgNo).name?` <span class="muted">${esc(bomFg(r.fgNo).name)}</span>`:''}${r.parentNo&&r.parentNo!==r.fgNo?` <span class="muted">‹${esc(r.parentNo)}›</span>`:''} <span class="muted">×${bomQ(bTot(r))}</span></span>`).join('')}${used.length>40?`<span class="muted">외 ${used.length-40}개</span>`:''}</div>
-    ${notIn?`<div style="color:var(--warn);margin-top:6px">⚠ 입력한 완성품(${esc(fg)})의 BOM에는 이 부품이 없습니다. 번호를 확인하세요.</div>`:''}</div>`;
+  const fg=String(fgNo||'').trim(),notIn=fg&&ix.byFg.has(fg)&&!used.some(r=>r.fgNo===fg);
+  const L=[...used].sort((a,b)=>kcmp(bomFg(a.fgNo).model||'~',bomFg(b.fgNo).model||'~')||kcmp(a.fgNo,b.fgNo));
+  // 처음엔 접어 두고(드롭다운), 누르면 제품 목록 표 — 열고 닫은 상태는 기억
+  const open=!!bomImpactHTML.open;
+  return `<details class="bomx bomdd" ${open?'open':''} ontoggle="bomImpactHTML.open=this.open">
+    <summary><b>📦 영향 범위</b> — 이 부품이 들어가는 제품 <b>${fgsU.length}개</b>${models.length?` · 차종 <b>${models.map(esc).join(', ')}</b>`:''} <span class="muted ddh">— 눌러서 제품 목록 보기</span></summary>
+    <div class="tw" style="max-height:240px;margin-top:6px"><table class="sm"><thead><tr><th>차종</th><th>제품 품번</th><th>제품명</th><th>바로 위 품번</th><th class="n">레벨</th><th class="n">제품 1개당</th></tr></thead><tbody>
+    ${L.map(r=>{const m=bomFg(r.fgNo),up=r.parentNo&&r.parentNo!==r.fgNo?r.parentNo:'';return `<tr class="${r.fgNo===fg?'on':''}${pick?' bpick':''}" ${pick?`onclick="bomPickFg(${jsq(r.fgNo)})" title="눌러서 완성품 품번으로 입력"`:''}><td class="nw">${esc(m.model||'')}</td><td class="nw"><b>${esc(r.fgNo)}</b></td><td>${esc(m.name||'')}</td><td class="nw muted">${esc(up||'(제품에 바로)')}</td><td class="n">${esc(bomLv(r))}</td><td class="n">×${bomQ(bTot(r))}</td></tr>`}).join('')}
+    </tbody></table></div>${pick?'<div class="muted" style="margin-top:4px">줄을 누르면 완성품 품번으로 입력됩니다.</div>':''}
+    ${notIn?`<div style="color:var(--warn);margin-top:6px">⚠ 입력한 완성품(${esc(fg)})의 BOM에는 이 부품이 없습니다. 번호를 확인하세요.</div>`:''}</details>`;
 }
 function bomDefect(){const f=$('#mf'),b=$('#bomBox');if(f&&b&&f.partNo)b.innerHTML=bomImpactHTML(f.partNo.value,f.fgNo&&f.fgNo.value,true)}
 function bomNcr(){const f=$('#mf'),b=$('#ncrBom');if(f&&b&&f.partNo)b.innerHTML=bomImpactHTML(f.partNo.value,'',false)}
