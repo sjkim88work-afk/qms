@@ -1,0 +1,48 @@
+# 버전별 릴리스 자동 생성
+# - main에 index.html(APP_VER)이 바뀌어 병합되면 그 버전의 릴리스를 만든다
+# - 아직 릴리스가 없는 지난 버전도 함께 만든다 (이미 있는 버전은 건너뜀)
+# - Actions 탭에서 'Run workflow'로 직접 실행할 수도 있다
+name: release
+on:
+  push:
+    branches: [main]
+    paths: [index.html, CHANGELOG.md, .github/workflows/release.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 버전별 릴리스 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rel
+          # 버전마다 그 버전의 마지막 커밋 (오래된 것부터 훑어서 뒤의 커밋이 덮어씀)
+          declare -A last; order=()
+          for h in $(git log --reverse --format=%H -- index.html); do
+            v=$(git show "$h:index.html" | grep -oE "APP_VER='[^']*'" | head -1 | cut -d"'" -f2 || true)
+            [ -z "$v" ] && continue
+            [ -z "${last[$v]+x}" ] && order+=("$v")
+            last[$v]=$h
+          done
+          cur=$(grep -oE "APP_VER='[^']*'" index.html | head -1 | cut -d"'" -f2)
+          for v in "${order[@]}"; do
+            if gh release view "v$v" >/dev/null 2>&1; then echo "v$v 있음 — 건너뜀"; continue; fi
+            h=${last[$v]}
+            git show "$h:index.html" > "/tmp/rel/QIS_v$v.html"
+            awk -v v="$v" '
+              index($0,"## ver " v " ")==1 {on=1; sub(/^## ver [^ ]+ — /,""); print "**" $0 "**"; print ""; next}
+              /^## ver / {on=0}
+              on' CHANGELOG.md > "/tmp/rel/$v.md"
+            [ -s "/tmp/rel/$v.md" ] || echo "변경 내역 없음" > "/tmp/rel/$v.md"
+            latest=false; [ "$v" = "$cur" ] && latest=true
+            gh release create "v$v" "/tmp/rel/QIS_v$v.html" --target "$h" --title "QIS ver $v" --notes-file "/tmp/rel/$v.md" --latest=$latest
+            echo "v$v 릴리스 생성 ($h)"
+          done
