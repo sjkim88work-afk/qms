@@ -1,0 +1,23 @@
+# 화면 시험 — PR · main 변경마다 실행 (약 2분)
+name: test
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Playwright 설치
+        run: npm install --no-save playwright@1 && npx playwright install --with-deps chromium
+      - name: 화면 시험
+        run: node tests/browser_test.js
+      - name: 버전 표기 일치 (index.html · sw.js · CHANGELOG)
+        run: |
+          v=$(grep -oE "APP_VER='[^']*'" index.html | head -1 | cut -d"'" -f2)
+          grep -q "qms-v$v'" sw.js || { echo "sw.js VER 이 $v 가 아닙니다"; exit 1; }
+          grep -q "^## ver $v " CHANGELOG.md || { echo "CHANGELOG 에 ver $v 항목이 없습니다"; exit 1; }
