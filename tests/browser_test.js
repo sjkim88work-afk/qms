@@ -208,7 +208,7 @@ const SEED = () => {
     const d = await p.evaluate(() => { const d = db.defects.find(x => x.desc === '시험 등록'); return { qty: d.qty, sup: d.supplierId, ph: d.photos.length, done: !!document.querySelector('.mdone'), resp: d.resp }; });
     ok(d.qty === 7 && d.sup === 'S1' && d.ph === 1 && d.done, `모바일: 사진 포함 불량 등록 · 결과 표시 (${JSON.stringify(d)})`);
     ok(await p.evaluate(async () => (await photoGetMany(db.defects.find(x => x.desc === '시험 등록').photos)).length) === 1, '모바일: 사진 저장소에 저장됨');
-    await p.click('.mtabs button:nth-child(2)');
+    await p.click('.mtabs button:has-text("진행 현황")');
     ok((await p.textContent('#view')).includes('NCR-T1') && (await p.textContent('#view')).includes('TP-001'), '모바일: 진행 현황에 NCR · 최근 불량');
     await p.click('.mrow');
     ok(await p.evaluate(() => document.querySelector('#mcard').classList.contains('on')), '모바일: 항목을 누르면 요약 카드');
