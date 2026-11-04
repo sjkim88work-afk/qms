@@ -187,6 +187,45 @@ const SEED = () => {
     await ctx.close();
   }
 
+  // 모바일 화면: 불량 등록(사진 · 품번 자동 · 심각도) · 진행 현황 · 요약 카드 · 화면 전환
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto(FILE); await p.waitForFunction(() => typeof dataReady !== 'undefined' && dataReady);
+    await p.evaluate(() => { db.suppliers.push({ id: 'S1', name: '가나정밀', code: 'A01' }); db.parts.push({ id: 'P1', partNo: 'TP-001', name: '시험 힌지', supplierId: 'S1' });
+      db.ncrs.push({ id: 'N1', no: 'NCR-T1', issueDate: '2026-10-20', notifyDate: '2026-10-20', requestDate: '2026-10-20', dueDate: '2026-10-27', supplierId: 'S1', partNo: 'TP-001', reqType: '8D 보고서', defectIds: [] }); render(); });
+    ok(await p.evaluate(() => document.body.classList.contains('mob') && !!document.querySelector('#mobForm')), '모바일: 좁은 화면에서 자동으로 모바일 화면 · 등록 폼');
+    await p.fill('#mobForm [name=partNo]', 'TP-001');
+    ok((await p.textContent('#mobPart')).includes('시험 힌지') && await p.inputValue('#mobForm [name=supplierId]') === 'S1', '모바일: 품번 → 품명 · 협력사 자동');
+    await p.fill('#mobForm [name=qty]', '7');
+    ok((await p.textContent('#mobSev')).includes('예상 심각도'), '모바일: 심각도 미리 보기');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await p.setInputFiles('.mphb label:nth-child(2) input', { name: 'a.png', mimeType: 'image/png', buffer: png });
+    await p.waitForFunction(() => mob.photos.length === 1);
+    await p.fill('#mobForm [name=desc]', '시험 등록');
+    await p.click('#mobSaveBtn');
+    await p.waitForFunction(() => db.defects.some(d => d.desc === '시험 등록'));
+    const d = await p.evaluate(() => { const d = db.defects.find(x => x.desc === '시험 등록'); return { qty: d.qty, sup: d.supplierId, ph: d.photos.length, done: !!document.querySelector('.mdone'), resp: d.resp }; });
+    ok(d.qty === 7 && d.sup === 'S1' && d.ph === 1 && d.done, `모바일: 사진 포함 불량 등록 · 결과 표시 (${JSON.stringify(d)})`);
+    ok(await p.evaluate(async () => (await photoGetMany(db.defects.find(x => x.desc === '시험 등록').photos)).length) === 1, '모바일: 사진 저장소에 저장됨');
+    await p.click('.mtabs button:nth-child(2)');
+    ok((await p.textContent('#view')).includes('NCR-T1') && (await p.textContent('#view')).includes('TP-001'), '모바일: 진행 현황에 NCR · 최근 불량');
+    await p.click('.mrow');
+    ok(await p.evaluate(() => document.querySelector('#mcard').classList.contains('on')), '모바일: 항목을 누르면 요약 카드');
+    await p.click('#mcard .mbig');
+    ok(await p.evaluate(() => !document.querySelector('#modal').classList.contains('on')), '모바일: PC 편집 창이 열리지 않음');
+    await p.evaluate(() => mobSet('pc'));
+    ok(await p.evaluate(() => !document.body.classList.contains('mob') && document.querySelector('#nav').textContent.includes('대시보드')), '모바일: PC 화면으로 전환');
+    await p.evaluate(() => mobSet('auto'));
+    ok(errs.length === 0, '모바일: 페이지 오류 없음 ' + errs.join(' | '));
+    await ctx.close();
+  }
+  {
+    const { ctx, p } = await fresh(browser);
+    ok(await p.evaluate(() => !document.body.classList.contains('mob') && !!document.querySelector('#nav button')), 'PC 화면은 그대로');
+    await ctx.close();
+  }
+
   await browser.close();
   console.log(fails.length ? `FAILS: ${fails.length}` : 'ALL PASS');
   process.exit(fails.length ? 1 : 0);
