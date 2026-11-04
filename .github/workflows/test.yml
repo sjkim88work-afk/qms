@@ -18,6 +18,8 @@ jobs:
         run: node tests/browser_test.js
       - name: 폴더 원본 시험
         run: node tests/folder_test.js
+      - name: 업무 흐름 시험 (v0.5.0)
+        run: node tests/workflow_test.js
       - name: 버전 표기 일치 (index.html · sw.js · CHANGELOG)
         run: |
           v=$(grep -oE "APP_VER='[^']*'" index.html | head -1 | cut -d"'" -f2)
