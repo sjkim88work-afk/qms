@@ -733,9 +733,93 @@ function dTx(mode,fn){return ddb().then(d=>new Promise((res,rej)=>{let tx;try{tx
   const out=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(out instanceof IDBRequest?out.result:out);
   tx.onerror=()=>rej(tx.error||new Error('저장 실패'));tx.onabort=()=>rej(tx.error||new Error('저장 공간 부족 또는 중단'))}))}
 const dGet=k=>dTx('readonly',s=>s.get(k)),dPut=(k,v)=>dTx('readwrite',s=>{s.put(v,k)});
+/* ---- 데이터 원본: QIS 폴더 파일 (선택) ----
+   설정 › 데이터 · 백업 › 데이터 원본 에서 ‘QIS 폴더 파일’로 바꾸면 QIS 폴더의 QIS_data.json 이 원본이 되고,
+   브라우저에는 기록 데이터를 두지 않는다 (열 때 파일에서 불러오고, 고치면 바로 파일에 저장).
+   · 폴더 허용이 풀려 있으면 ‘QIS 폴더 연결’ 한 번 — 허용 창에서 ‘방문할 때마다 허용’을 고르면 다음부터 묻지 않음
+   · 저장 직전에 파일이 다른 곳(다른 PC · 동기화)에서 바뀌었으면 덮어쓰지 않고 멈춤
+   · 이 PC 전용 — 같은 폴더를 여러 PC에서 동시에 쓰는 용도가 아님 (그 경우는 서버형) */
+const SRC_KEY='qis_dataSrc',DATA_FILE='QIS_data.json';  // 영문 이름 — 네트워크 드라이브 · 동기화 폴더에서도 안전
+const srcFolder=()=>{try{return localStorage.getItem(SRC_KEY)==='folder'}catch(e){return false}};
+let folderRoot=null,folderWait=false,folderAt=0,folderConflict=false;
+async function folderReadText(){const f=await (await folderRoot.getFileHandle(DATA_FILE)).getFile();return {t:await f.text(),at:f.lastModified}}
+async function folderBoot(){
+  await null;  // 스크립트를 다 읽은 뒤 진행 (폴더 정보 저장소 hGet 이 아래쪽에 정의됨)
+  dataStore='folder';db=defaultDB();
+  let h=null;try{h=await hGet('rootDir')}catch(e){}
+  if(!h){loadFailed='데이터 원본 폴더(QIS 폴더) 정보를 찾지 못했습니다 — 설정 › 데이터 · 백업 › 백업 폴더에서 복원으로 QIS 폴더를 고르세요';return}
+  folderRoot=h;
+  if(await permOK(h,false))await folderLoad();else folderWait=true;
+}
+async function folderLoad(){
+  try{const r=await folderReadText();db=migrate(JSON.parse(r.t));folderAt=r.at;dataBytes=r.t.length;folderWait=false;folderConflict=false;loadFailed=null;return true}
+  catch(e){folderWait=false;loadFailed=e&&e.name==='NotFoundError'?`QIS 폴더 ‘${folderRoot.name}’에 ${DATA_FILE}이(가) 없습니다 — 폴더가 맞는지 확인하거나 백업 폴더에서 복원하세요`:'데이터 파일을 읽지 못했습니다 — '+(e&&e.message||e);return false}
+}
+// 앱을 열 때 폴더 허용이 풀려 있으면 이 버튼(클릭)으로 허용 → 파일에서 불러오기
+async function folderConnect(){
+  if(!folderRoot)return;
+  let ok=false;try{ok=await permOK(folderRoot,true)}catch(e){}
+  if(!ok){toast('폴더 허용이 필요합니다 — 허용 창에서 ‘허용’ 또는 ‘방문할 때마다 허용’을 누르세요');return}
+  await folderLoad();try{await attachRoot(folderRoot,true)}catch(e){}
+  if(!loadFailed)lockSev();render();renderAlert();updateSaveInfo();
+  if(!loadFailed)toast(`‘${folderRoot.name}’ 폴더의 데이터를 불러왔습니다`);
+}
+// 쓰기 허용이 풀려 저장하지 못했을 때: 화면의 데이터는 그대로 두고 허용만 다시 받아 저장
+async function folderReauth(){let ok=false;try{ok=await permOK(folderRoot,true)}catch(e){}if(!ok){toast('폴더 허용이 필요합니다');return}saveFailed=null;persist();renderAlert()}
+// 파일이 다른 곳에서 바뀐 경우: 지금 화면 내용을 백업 파일로 받아 두고 파일을 다시 불러옴
+async function folderReload(){
+  if(!await askConfirm({title:'데이터 파일을 다시 불러올까요?',msg:'지금 화면에만 있고 파일에 저장되지 않은 변경은 사라집니다. 먼저 ‘지금 화면 내용 내려받기’로 받아 두세요.',ok:'다시 불러오기'}))return;
+  saveFailed=null;await folderLoad();render();renderAlert();updateSaveInfo();
+}
+function folderPersist(){
+  if(folderWait||!folderRoot||folderConflict)return Promise.resolve();
+  if(_pw){_pAgain=true;return _pw}
+  let j;try{j=JSON.stringify(db)}catch(e){saveFailed=String(e.message||e);renderAlert();return Promise.resolve()}
+  _pw=(async()=>{
+    if(!await permOK(folderRoot,false))throw Object.assign(new Error('QIS 폴더 쓰기 허용이 풀렸습니다'),{perm:true});
+    const fh=await folderRoot.getFileHandle(DATA_FILE,{create:true});
+    const cur=await fh.getFile();
+    if(folderAt&&cur.lastModified!==folderAt){folderConflict=true;throw new Error('데이터 파일이 다른 곳(다른 PC · 동기화 · 직접 수정)에서 바뀌었습니다 — 덮어쓰지 않고 저장을 멈췄습니다')}
+    const w=await fh.createWritable();await w.write(j);await w.close();
+    folderAt=(await fh.getFile()).lastModified;dataBytes=j.length;
+  })().then(()=>{if(saveFailed){saveFailed=null;renderAlert()}updateSaveInfo()})
+    .catch(e=>{console.error(e);saveFailed=String(e&&e.message||e);folderPersist.perm=!!(e&&e.perm);renderAlert();updateSaveInfo()})
+    .finally(()=>{_pw=null;if(_pAgain){_pAgain=false;persist()}});
+  return _pw;
+}
+const dKeys=()=>dTx('readonly',s=>s.getAllKeys());
+const dDel=k=>dTx('readwrite',s=>{s.delete(k)});
+async function srcToFolder(){
+  const h=rootDir||lazyH.rootDir;
+  if(!h){toast('먼저 위의 ‘QIS 폴더’를 지정하세요');return}
+  let ok=false;try{ok=await permOK(h,true)}catch(e){}
+  if(!ok){toast('폴더 허용이 필요합니다');return}
+  if(!await askConfirm({title:'데이터 원본을 QIS 폴더 파일로 바꿀까요?',items:[`‘${esc(h.name)}’ 폴더의 <b>${DATA_FILE}</b>이 원본이 됩니다 — 열 때 이 파일에서 불러오고, 고치면 바로 이 파일에 저장`,'이 PC 브라우저에 있던 기록 데이터는 파일에 저장 · 확인한 뒤 지웁니다 (사진은 그대로 · 사진 폴더에도 저장됨)','앱을 열 때 폴더 허용을 물을 수 있습니다 — ‘방문할 때마다 허용’을 고르면 다음부터 묻지 않습니다','이 PC 전용입니다 — 같은 폴더를 다른 PC에서 동시에 쓰지 마세요'],ok:'바꾸기',danger:false}))return;
+  try{
+    let ex=null;try{ex=await (await (await h.getFileHandle(DATA_FILE)).getFile()).text()}catch(e){}
+    if(ex){if(!await askConfirm({title:`폴더에 이미 ${DATA_FILE}이 있습니다`,msg:'지금 이 PC의 데이터로 바꿉니다. 기존 파일은 같은 폴더에 ‘QIS_data_prev_날짜’ 이름으로 남겨 둡니다.',ok:'바꾸기',danger:false}))return;
+      const keep=await h.getFileHandle(DATA_FILE.replace('.json',`_prev_${now().replace(/[:.]/g,'-').slice(0,19)}.json`),{create:true});const w0=await keep.createWritable();await w0.write(ex);await w0.close()}
+    const j=JSON.stringify(db),fh=await h.getFileHandle(DATA_FILE,{create:true}),w=await fh.createWritable();await w.write(j);await w.close();
+    const f=await fh.getFile();if(await f.text()!==j)throw new Error('저장한 파일을 다시 읽어 보니 내용이 다릅니다');
+    folderRoot=h;folderAt=f.lastModified;dataBytes=j.length;try{await hPut('rootDir',h)}catch(e){}
+    try{localStorage.setItem(SRC_KEY,'folder')}catch(e){}
+    dataStore='folder';
+    try{for(const k of await dKeys())if(String(k).startsWith(KEY))await dDel(k)}catch(e){console.warn(e)}
+    try{localStorage.removeItem(KEY)}catch(e){}
+  }catch(e){toast('바꾸지 못했습니다 — '+e.message+' (브라우저 데이터는 그대로입니다)');return}
+  render();toast(`데이터 원본을 ‘${h.name}’ 폴더의 ${DATA_FILE}로 바꿨습니다`);
+}
+async function srcToBrowser(){
+  if(!await askConfirm({title:'데이터 원본을 이 PC 브라우저로 되돌릴까요?',msg:`지금 데이터를 브라우저 저장소에 저장하고 확인한 뒤 원본을 바꿉니다. 폴더의 ${DATA_FILE}은 그대로 남습니다(이후에는 고쳐지지 않음).`,ok:'되돌리기',danger:false}))return;
+  try{const j=JSON.stringify(db);await dPut(KEY,j);if(await dGet(KEY)!==j)throw new Error('확인 실패');
+    try{localStorage.setItem(SRC_KEY,'browser')}catch(e){}dataStore='idb';dataBytes=j.length;folderConflict=false}
+  catch(e){toast('되돌리지 못했습니다 — '+e.message);return}
+  render();toast('데이터 원본을 이 PC 브라우저로 되돌렸습니다');
+}
 const savedMs=d=>{const t=new Date(d&&d.meta&&d.meta.saved||0).getTime();return isFinite(t)?t:0};
 async function bootData(){
   if(RO){dataReady=true;return}
+  if(srcFolder()){await folderBoot();dataReady=true;return}
   let rec;
   let usedIdb=false;try{usedIdb=localStorage.getItem(KEY+'_idb')==='1'}catch(e){}
   try{rec=await dGet(KEY)}catch(e){
@@ -766,6 +850,7 @@ async function bootData(){
 let _pw=null,_pAgain=false;
 const dataCh=(()=>{try{return RO?null:new BroadcastChannel('personalQMS_data')}catch(e){return null}})(),TAB_ID=Math.random().toString(36).slice(2);
 function persist(){
+  if(dataStore==='folder')return folderPersist();
   if(dataStore!=='idb')return Promise.resolve();
   if(_pw){_pAgain=true;return _pw}
   let j;try{j=JSON.stringify(db)}catch(e){saveFailed=String(e.message||e);renderAlert();return Promise.resolve()}
@@ -789,7 +874,7 @@ let tabLocked=false;  // 다른 창에서 편집 중 — 이 창은 저장하지
     tabLocked=true;bootReady.then(()=>{renderAlert();updateSaveInfo()});
     navigator.locks.request('qis-editor',async()=>{
       await bootReady;
-      try{const r=dataStore==='idb'?await dGet(KEY):null;if(r)db=migrate(JSON.parse(r))}catch(e){console.error(e)}
+      try{if(dataStore==='folder'){if(!folderWait)await folderLoad()}else{const r=dataStore==='idb'?await dGet(KEY):null;if(r)db=migrate(JSON.parse(r))}}catch(e){console.error(e)}
       tabLocked=false;render();renderAlert();updateSaveInfo();toast('다른 창이 닫혀 이제 이 창에서 편집할 수 있습니다');
       return new Promise(()=>{})});
   }).catch(e=>console.warn('창 잠금 사용 불가',e));
@@ -802,11 +887,12 @@ function save(){
   if(!undoBusy&&undoSnap&&!save._keep)hideUndo();
   if(loadFailed){renderAlert();toast('데이터를 읽지 못해 저장을 멈췄습니다 — 위 빨간 안내를 확인하세요');return}
   if(tabLocked){renderAlert();toast('다른 창에서 QIS가 열려 있어 이 창은 보기 전용입니다 — 그 창에서 입력하세요');return}
+  if(folderWait){renderAlert();toast('먼저 ‘QIS 폴더 연결’을 누르세요 — 연결 전에는 저장하지 않습니다');return}
   lockSev();
   const prevSaved=db.meta.saved;db.meta.saved=now();db.meta.appVer=APP_VER;
   try{czSyncAll()}catch(e){}
   if(storageBlocked){updateSaveInfo();return}
-  if(dataStore==='idb')persist();
+  if(dataStore==='idb'||dataStore==='folder')persist();
   else try{localStorage.setItem(KEY,JSON.stringify(db));if(saveFailed){saveFailed=null;renderAlert()}}catch(e){db.meta.saved=prevSaved;saveFailed=String(e&&e.message||e);renderAlert();updateSaveInfo();return}
   if(photoDir){clearTimeout(save._ph);save._ph=setTimeout(()=>syncPhotoFiles(false),1500)}
   else if(lazyH.photoDir&&!lazyNo.photoDir&&navigator.userActivation&&navigator.userActivation.isActive)setTimeout(()=>{if(phNeedWrite())ensureDir('photoDir')},300);
@@ -816,6 +902,8 @@ function save(){
 }
 function renderAlert(){
   const b=$('#alertBar');if(!b)return;
+  if(folderWait&&!loadFailed){b.style.display='flex';b.style.background='#e8f1fb';b.style.borderBottomColor='#b6cfe8';b.style.color='#16324a';b.innerHTML=`<span>📂 <b>데이터 원본이 QIS 폴더 ‘${esc(folderRoot&&folderRoot.name||'')}’입니다.</b> 브라우저가 폴더 허용을 다시 묻습니다 — 아래 버튼을 누르고 허용하면 데이터를 불러옵니다. (‘방문할 때마다 허용’을 고르면 다음부터 묻지 않습니다)</span><span style="flex:1"></span><button class="b s p" onclick="folderConnect()">QIS 폴더 연결</button>`;return}
+  if(dataStore==='folder'&&saveFailed){b.style.display='flex';b.style.background='#fde8e8';b.style.borderBottomColor='#e5a3a3';b.style.color='#7a1414';b.innerHTML=`<span>⛔ <b>QIS 폴더 파일에 저장하지 못했습니다</b> — ${esc(saveFailed)}. 화면의 내용은 아직 그대로 있습니다.</span><span style="flex:1"></span>${folderConflict?`<button class="b s" onclick="exportJSON(false)">지금 화면 내용 내려받기</button><button class="b s p" onclick="folderReload()">파일 다시 불러오기</button>`:`<button class="b s p" onclick="folderReauth()">폴더 허용 후 다시 저장</button>`}`;return}
   if(tabLocked&&!loadFailed){b.style.display='flex';b.innerHTML=`<span>🔒 <b>다른 창(또는 탭)에서 QIS가 열려 있어 이 창은 보기 전용입니다.</b> 두 창에서 동시에 저장하면 한쪽 입력이 사라질 수 있어 막았습니다. 입력은 먼저 연 창에서 하세요 — 그 창을 닫으면 이 창이 최신 내용으로 바뀌고 편집할 수 있게 됩니다.</span>`;return}
   if(storageBlocked){b.style.display='flex';b.style.background='#fff7e0';b.style.borderBottomColor='#f0d49b';b.style.color='#5c4210';b.innerHTML=`<span>💡 <b>미리보기 화면에서는 데이터가 저장되지 않습니다.</b> 이 창은 보안상 브라우저 저장소가 막혀 있어, 여기서 입력한 내용은 창을 닫으면 사라집니다. 실제로 쓰려면 파일을 내려받아 <b>Edge 또는 Chrome에서 직접</b> 여세요.</span>`;return}
   if(loadFailed){b.style.display='flex';b.innerHTML=`<span>⛔ <b>저장된 데이터를 읽지 못했습니다</b> (${esc(loadFailed)}). 원본은 보존해 두었고, 덮어쓰지 않도록 <b>저장을 멈췄습니다.</b> 백업 파일로 복원하거나 원본을 내려받아 확인하세요.</span><span style="flex:1"></span><button class="b s" onclick="downloadBroken()">원본 내려받기</button><button class="b s p" onclick="pickImport('replace')">백업으로 복원</button>`;return}
@@ -1364,6 +1452,7 @@ function render(){
 function renderInner(){
   if(RO&&!RO_TABS.includes(state.tab)&&state.tab!=='prog')state.tab='dash';  // 공유본: 허용한 화면만
   try{czSyncAll()}catch(e){}
+  if(folderWait){$('#nav').innerHTML='';$('#view').innerHTML=`<div class="card" style="max-width:560px;margin:40px auto;text-align:center;padding:28px"><div style="font-size:36px">📂</div><h2 style="margin:8px 0">QIS 폴더를 연결하세요</h2><p class="muted">데이터 원본이 QIS 폴더 <b>‘${esc(folderRoot&&folderRoot.name||'')}’</b>의 ${DATA_FILE}입니다.<br>버튼을 누르고 허용하면 데이터를 불러옵니다.</p><button class="b p" style="font-size:16px;padding:10px 22px" onclick="folderConnect()">QIS 폴더 연결</button><p class="muted" style="font-size:12px;margin-top:14px">허용 창에서 ‘방문할 때마다 허용’을 고르면 다음부터는 바로 열립니다.</p></div>`;renderBrand();updateSaveInfo();return}
   if(mobView()){
     $('#dlParts').innerHTML=db.parts.map(p=>`<option value="${esc(p.partNo)}">${esc(p.name)} · ${esc(supName(p.supplierId))}</option>`).join('');
     renderMobile();renderBrand();updateSaveInfo();return}
@@ -1389,7 +1478,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.4.8';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4.9';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -4729,6 +4818,10 @@ function renderData(){
       sv(tip('QIS 폴더','폴더 하나만 고르면 그 안에 ‘사진·첨부’와 ‘백업’ 폴더를 만들어 각각 저장합니다. 고친 뒤 1분 안에 최신 백업, 하루 한 번 날짜별 백업(사진 포함), QIS.sqlite가 ‘백업’에 쌓입니다. OneDrive 동기화 폴더나 회사 네트워크 드라이브 안에 두면 노트북이 고장 나도 남습니다.'),
         `${folderTxt}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${chip(!!photoDir,!!lazyH.photoDir&&!photoDir,'사진·첨부')}${chip(!!backupDir,!!lazyH.backupDir&&!backupDir,'백업')}</div>${times?`<div class="muted" style="font-size:12px;margin-top:6px">${times}</div>`:''}${!anyDir?'<div class="muted" style="font-size:12px;margin-top:4px">권장: OneDrive 안에 <b>QIS</b> 폴더를 만들어 지정</div>':''}`,
         `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="b s ${rootH?'':'p'}" onclick="pickRoot()">${rootH?'변경':'폴더 지정'}</button>${rootH?'<button class="b s" onclick="unlinkRoot()">해제</button>':''}</span>`))+
+    sg('데이터 원본',
+      sv(tip('원본 위치','브라우저: 이 PC 브라우저 저장소가 원본 (기본). QIS 폴더 파일: QIS 폴더의 '+DATA_FILE+'이 원본이고 브라우저에는 기록을 두지 않습니다 — 서버 없이 서버형처럼 데이터를 파일로 관리. 이 PC 전용.'),
+        dataStore==='folder'?`<span class="bg ok">QIS 폴더 파일</span> <b>${esc(folderRoot&&folderRoot.name||'')}</b> / ${DATA_FILE} <span class="muted">— 브라우저에는 기록을 두지 않음</span>`:`<span class="bg mut">이 PC 브라우저</span> <span class="muted">— QIS 폴더를 지정한 뒤 파일로 바꿀 수 있습니다</span>`,
+        dataStore==='folder'?btn('브라우저로 되돌리기','srcToBrowser()'):btn('QIS 폴더 파일로 바꾸기','srcToFolder()',rootH?'p':'')))+
     sg('백업 · 복원',
       sv(tip('백업','화면 위 ‘백업’ 버튼과 같습니다. 폴더가 있으면 폴더에, 없으면 다운로드로 받습니다.'),`마지막 백업 <b>${db.meta.lastBackup?loc(db.meta.lastBackup):'없음'}</b>${backupDue()?' <span class="bg warn">백업 필요</span>':''}`,
         `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn('지금 백업','exportJSON(true)','p')}${btn('백업 폴더에서 복원','restoreFromFolder()')}</span>`))+
@@ -4750,7 +4843,7 @@ function renderData(){
       sv('백업으로 교체','파일 하나를 골라 현재 데이터를 모두 교체',btn('파일 선택','pickImport(\'replace\')','d'))+
       sv('백업 합치기','현재 데이터는 두고 백업에만 있는 기록을 더함 (같은 기록은 최근 것)',btn('파일 선택','pickImport(\'merge\')')))+
     sg('저장 공간',
-      sv('원본 데이터',dataStore==='idb'?'이 PC 브라우저의 대용량 저장소 — 입력하면 바로 저장':'이 PC 브라우저의 기본 저장소 (약 5MB)',`<span class="muted">협력사 ${cnt[0]} · 부품 ${cnt[1]} · 불량 ${cnt[2]} · NCR ${cnt[3]} · 사진 ${nPh} · 기록 ${(n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB')(JSON.stringify(db).length)}</span>`)+
+      sv('원본 데이터',dataStore==='folder'?`QIS 폴더 파일 (${DATA_FILE}) — 입력하면 바로 파일에 저장`:dataStore==='idb'?'이 PC 브라우저의 대용량 저장소 — 입력하면 바로 저장':'이 PC 브라우저의 기본 저장소 (약 5MB)',`<span class="muted">협력사 ${cnt[0]} · 부품 ${cnt[1]} · 불량 ${cnt[2]} · NCR ${cnt[3]} · 사진 ${nPh} · 기록 ${(n=>n<1048576?Math.max(1,Math.round(n/1024))+'KB':(n/1048576).toFixed(1)+'MB')(JSON.stringify(db).length)}</span>`)+
       sv('삭제 방지','‘인터넷 사용 기록 삭제’에서 사이트 데이터를 지우면 사라질 수 있습니다 — 백업 폴더가 대비책','<span id="persistSt" class="muted">확인 중…</span>')+
       sv('브라우저 사용량','사진 포함','<span id="usage" class="muted">계산 중…</span>'))+
     sg('초기화',sv('전체 초기화','모든 데이터와 사진을 영구 삭제 — 먼저 백업하세요',btn('초기화','resetAll()','dz')))+
@@ -4894,6 +4987,7 @@ function dirAttach(k,h,quiet){
 // 기본 저장 폴더: 하나만 고르면 그 안에 ‘사진·첨부’ · ‘백업’ 폴더를 만들어 각각 씀 (허용도 이 폴더 한 번)
 const ROOT_SUB={photoDir:'사진·첨부',backupDir:'백업'};let rootDir=null;
 async function pickRoot(){
+  if(dataStore==='folder'){toast('지금 데이터 원본이 이 폴더입니다 — 폴더를 바꾸려면 먼저 데이터 원본을 브라우저로 되돌리세요');return}
   if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 지정을 지원하지 않습니다 — Edge 또는 Chrome에서 여세요');return}
   let h;try{h=await window.showDirectoryPicker({id:'qms-root',mode:'readwrite'})}catch(e){if(e.name!=='AbortError')toast('폴더 지정 실패: '+e.message);return}
   try{await attachRoot(h,false)}catch(e){toast('폴더 만들기 실패: '+e.message);return}
@@ -4907,6 +5001,7 @@ async function attachRoot(h,quiet){
   dirAttach('photoDir',ph,quiet);dirAttach('backupDir',bk,quiet);if(!quiet)setTimeout(()=>autoBackup(true),300);
 }
 async function unlinkRoot(){
+  if(dataStore==='folder'){toast('지금 데이터 원본이 이 폴더입니다 — 먼저 데이터 원본을 브라우저로 되돌리세요');return}
   if(!await askConfirm({title:'기본 저장 폴더 지정을 해제할까요?',msg:'사진 · 첨부 폴더와 백업 폴더 지정도 함께 해제합니다. 폴더에 이미 저장된 파일은 지워지지 않고, 앱 안의 데이터 · 사진도 그대로입니다.',ok:'해제',danger:false}))return;
   rootDir=null;photoDir=null;backupDir=null;['rootDir','photoDir','backupDir'].forEach(k=>{delete lazyH[k];delete lazyNo[k]});
   for(const k of ['rootDir','photoDir','backupDir'])try{await hDel(k)}catch(e){}
@@ -4973,7 +5068,7 @@ async function restoreFromFolder(){
   if(!dir&&lazyH.backupDir&&await ensureDir('backupDir'))dir=backupDir;
   if(!dir){if(!window.showDirectoryPicker){toast('이 브라우저는 폴더 열기를 지원하지 않습니다 — ‘백업으로 교체’에서 파일을 직접 고르세요');return}
     try{dir=await window.showDirectoryPicker({id:'qms-backupDir',mode:'readwrite'})}catch(e){if(e.name!=='AbortError')toast('폴더 열기 실패: '+e.message);return}}
-  const scan=async d=>{const L=[];for await(const [n,h] of d.entries()){if(h.kind==='file'&&(BK_RE.test(n)||n===LATEST_BK)){const f=await h.getFile();L.push({n,f,t:f.lastModified})}}return L};
+  const scan=async d=>{const L=[];for await(const [n,h] of d.entries()){if(h.kind==='file'&&(BK_RE.test(n)||n===LATEST_BK||n===DATA_FILE)){const f=await h.getFile();L.push({n,f,t:f.lastModified})}}return L};
   let L=await scan(dir),pickedRoot=null;
   // 기본 저장 폴더(QIS)를 고른 경우: 그 안의 ‘백업’ 폴더에서 찾음
   if(!L.length){try{const sub=await dir.getDirectoryHandle(ROOT_SUB.backupDir);const L2=await scan(sub);if(L2.length){pickedRoot=dir;dir=sub;L=L2}}catch(e){}}

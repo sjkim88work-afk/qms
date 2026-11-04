@@ -16,6 +16,8 @@ jobs:
         run: npm install --no-save playwright@1 && npx playwright install --with-deps chromium
       - name: 화면 시험
         run: node tests/browser_test.js
+      - name: 폴더 원본 시험
+        run: node tests/folder_test.js
       - name: 버전 표기 일치 (index.html · sw.js · CHANGELOG)
         run: |
           v=$(grep -oE "APP_VER='[^']*'" index.html | head -1 | cut -d"'" -f2)
