@@ -1541,7 +1541,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.6.0';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.6.1';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -1999,6 +1999,69 @@ function issDashItems(){
   const L=[];(db.issues||[]).filter(i=>issHot(i)&&!i.contain).forEach(i=>L.push(`<li><span class="bg bad">격리 확인</span> <a class="lk" onclick="issOpen('${i.id}')">${esc(i.no)} ${esc(i.title)}</a> — ${esc(i.urg)}${i.special?' · 특별특성':''} 이슈에 즉시 조치(격리) 기록 없음</li>`));
   (db.issues||[]).filter(issStale).forEach(i=>L.push(`<li><span class="bg warn">이슈 분류 대기</span> <a class="lk" onclick="issOpen('${i.id}')">${esc(i.no)} ${esc(i.title)}</a> — 발견 ${esc(issAt(i.at).slice(5,10))} · ${diffDays((i.at||i.createdAt||today()).slice(0,10),today())}일째 처리 방향 미정</li>`));
   return L.join('');
+}
+
+/* ================= 텔레그램 아침 요약 =================
+   매일 정한 시각 이후 QIS를 처음 열 때(또는 열려 있을 때) 하루 한 번, 지연 · 오늘 기한 · 이슈 분류 대기를 텔레그램으로 보냄.
+   봇 토큰 · 받을 곳은 이 PC 브라우저(localStorage)에만 저장 — 데이터 · 백업 · 공유본에 들어가지 않음.
+   보낸 날짜는 데이터(db.meta.tgSent)에 남겨 다른 창 · PC에서 같은 날 두 번 보내지 않음. */
+const TG_KEY='qis_tg';
+const tgCfg=()=>{let c={};try{c=JSON.parse(localStorage.getItem(TG_KEY)||'{}')||{}}catch(e){}return{token:'',chat:'',time:'08:00',on:false,noWeekend:true,detail:false,...c}};
+function tgSet(k,v){const c=tgCfg();c[k]=v;try{localStorage.setItem(TG_KEY,JSON.stringify(c))}catch(e){toast('이 브라우저에 저장하지 못했습니다');return}const el=$('#setSaved');if(el){el.textContent='저장됨';el.style.opacity=1;setTimeout(()=>{el.style.opacity=0},1200)}}
+const tgShort=s=>String(s||'').split(/ · | — /)[0];
+function tgSummary(){
+  const t=today(),cfg=tgCfg(),P=progCases();
+  const late=P.filter(c=>c.late.length).sort((a,b)=>b.late[0].n-a.late[0].n);
+  const due=P.filter(c=>c.next&&c.next.nextDate===t&&!c.late.length);
+  const kind=c=>c.kind==='ncr'?'NCR':c.kind==='rca'?'RCA':'불량',lbl=s=>cfg.detail?s:tgShort(s);
+  const L=[`[QIS] ${t.slice(5).replace('-','/')}(${'일월화수목금토'[new Date(t+'T00:00').getDay()]}) 아침 품질 요약`];
+  L.push('',`■ 지연 ${late.length}건`);
+  late.slice(0,10).forEach(c=>L.push(`· ${kind(c)} ${c.title} — ${lbl(c.late[0].l)} D+${c.late[0].n}${c.late.length>1?` (외 ${c.late.length-1})`:''}`));
+  if(late.length>10)L.push(`· 외 ${late.length-10}건`);
+  L.push('',`■ 오늘 기한 ${due.length}건`);
+  due.slice(0,10).forEach(c=>L.push(`· ${kind(c)} ${c.title} — ${lbl(c.next.next)}`));
+  if(due.length>10)L.push(`· 외 ${due.length-10}건`);
+  const is=db.issues||[],wait=is.filter(issWait),hot=is.filter(i=>issHot(i)&&!i.contain);
+  if(wait.length||hot.length){L.push('',`■ 이슈 분류 대기 ${wait.length}건${hot.length?` · 격리 기록 없음 ${hot.length}건`:''}`);[...new Set([...hot,...wait])].slice(0,5).forEach(i=>L.push(`· ${i.no}${cfg.detail?' '+i.title:''}${i.urg==='긴급'?' (긴급)':''}`))}
+  L.push('',`미종결 NCR ${db.ncrs.filter(n=>ncrStatus(n)!=='종결').length} · 진행 중 RCA ${db.cases.filter(czOpen).length} · 열린 이슈 ${is.filter(i=>!i.closedAt).length}`);
+  return L.join('\n');
+}
+async function tgCall(method,params,cfg){
+  cfg=cfg||tgCfg();if(!cfg.token)throw new Error('봇 토큰이 없습니다');
+  let r;try{r=await fetch(`https://api.telegram.org/bot${encodeURIComponent(cfg.token).replace(/%3A/gi,':')}/${method}`,{method:'POST',body:new URLSearchParams(params||{})})}
+  catch(e){throw new Error('텔레그램에 연결하지 못했습니다 — 인터넷 · 회사망 차단(api.telegram.org)을 확인하세요')}
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!j||!j.ok)throw new Error((j&&j.description)||`텔레그램 응답 오류 (${r.status})`);
+  return j.result;
+}
+const tgSend=(text,cfg)=>{cfg=cfg||tgCfg();if(!cfg.chat)return Promise.reject(new Error('받을 곳(chat ID)이 없습니다'));return tgCall('sendMessage',{chat_id:cfg.chat,text,disable_web_page_preview:'true'},cfg)};
+let tgBusy=false;
+async function tgSendSummary(manual){
+  if(tgBusy)return;tgBusy=true;
+  try{await tgSend(tgSummary());db.meta.tgSent=today();save();if(manual)toast('텔레그램으로 요약을 보냈습니다');if(state.tab==='data'&&state.setTab==='tg')render()}
+  catch(e){if(manual)toast('전송 실패: '+e.message);else console.warn('텔레그램 아침 요약 실패',e);throw e}
+  finally{tgBusy=false}
+}
+// 자동 전송 조건: 켜짐 · 토큰/받을 곳 있음 · 오늘 아직 안 보냄 · 정한 시각 지남 · (주말 제외) · 편집 가능한 창 · 데이터 정상
+function tgDue(now){
+  const c=tgCfg(),d=now||new Date(),t=today(),hm=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if(!c.on||!c.token||!c.chat)return false;
+  if(RO||tabLocked||loadFailed||!dataReady||(typeof folderWait!=='undefined'&&folderWait))return false;
+  if(db.meta.tgSent===t||hm<(c.time||'08:00'))return false;
+  if(c.noWeekend&&[0,6].includes(d.getDay()))return false;
+  return true;
+}
+function tgAuto(){if(tgDue())tgSendSummary(false).catch(()=>{})}
+bootReady.then(()=>{setTimeout(tgAuto,4000);setInterval(tgAuto,5*60*1000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(tgAuto,1500)})});
+async function tgTest(){try{await tgSend('[QIS] 텔레그램 알림 시험 전송입니다.');toast('시험 메시지를 보냈습니다 — 텔레그램에서 확인하세요')}catch(e){toast('전송 실패: '+e.message)}}
+// 봇을 그룹에 초대한 뒤 그룹에서 메시지를 한 번 보내면, 최근 대화에서 받을 곳(chat ID)을 찾음
+async function tgFindChats(){
+  const b=$('#tgChats');if(b)b.innerHTML='<span class="muted">찾는 중…</span>';
+  try{const ups=await tgCall('getUpdates',{limit:'50'}),m=new Map();
+    ups.forEach(u=>{const ch=(u.message||u.channel_post||u.my_chat_member||u.edited_message||{}).chat;if(ch&&ch.id!=null)m.set(String(ch.id),ch)});
+    if(!b)return;
+    b.innerHTML=m.size?[...m.values()].map(ch=>`<button class="b s" onclick="tgSet('chat',${jsq(String(ch.id))});render()">${esc(ch.title||[ch.first_name,ch.last_name].filter(Boolean).join(' ')||ch.username||ch.id)} <span class="muted">(${esc(ch.type)} · ${esc(String(ch.id))})</span></button>`).join(' '):'<span class="muted">찾은 대화가 없습니다 — 봇을 그룹에 초대한 뒤 그 그룹에 아무 메시지나 한 번 보내고 다시 누르세요</span>'}
+  catch(e){if(b)b.innerHTML=`<span style="color:var(--bad)">${esc(e.message)}</span>`}
 }
 
 /* ================= 진행 현황 ================= */
@@ -5096,7 +5159,7 @@ function bomApply(){
 
 /* ================= 설정 · 백업 ================= */
 function showUsage(){if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(e=>{const el=$('#usage');if(el)el.textContent=`브라우저 저장공간 사용 ${(e.usage/1048576).toFixed(1)}MB / 가용 약 ${(e.quota/1073741824).toFixed(1)}GB`}).catch(()=>{})}
-const SET_NAV=[['옵션',[['general','일반','M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0'],['brand','로고 · 서명','M4 16l4-4 3 3 5-6 4 5M4 5h16v14H4z'],['defect','불량 관리','M12 3l9 16H3zM12 10v4M12 17h.01'],['sev','심각도 평가','M5 20V10M12 20V4M19 20v-7'],['ncr','NCR · 통보서','M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6'],['docno','문서번호','M9 4L7 20M17 4l-2 16M4 9h16M3 15h16'],['eval','대책서 평가','M9 11l3 3 8-8M20 12v7H4V5h11'],['sup','협력사 등급','M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z']]],
+const SET_NAV=[['옵션',[['general','일반','M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0'],['brand','로고 · 서명','M4 16l4-4 3 3 5-6 4 5M4 5h16v14H4z'],['defect','불량 관리','M12 3l9 16H3zM12 10v4M12 17h.01'],['sev','심각도 평가','M5 20V10M12 20V4M19 20v-7'],['ncr','NCR · 통보서','M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6'],['docno','문서번호','M9 4L7 20M17 4l-2 16M4 9h16M3 15h16'],['eval','대책서 평가','M9 11l3 3 8-8M20 12v7H4V5h11'],['sup','협력사 등급','M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z'],['tg','알림 (텔레그램)','M6 9a6 6 0 0 1 12 0c0 6 3 8 3 8H3s3-2 3-8M10 21h4']]],
   ['데이터',[['backup','데이터 · 백업','M12 3v12M7 10l5 5 5-5M4 19h16']]]];
 const sv=(t,d,c,blk)=>`<div class="srow${blk?' blk':''}"><div class="si"><div class="st">${t}</div>${d?`<div class="sd">${d}</div>`:''}</div><div class="sc">${c}</div></div>`;
 const sg=(h,rows)=>`${h?`<div class="sgh">${h}</div>`:''}<div class="sgrp">${rows}</div>`;
@@ -5169,6 +5232,19 @@ function renderData(){
     return sg('형식 기호',sv('사용할 수 있는 기호',`<code>{YYYY}</code>=2026 · <code>{YYY}</code>=026 · <code>{YY}</code>=26 · <code>{MM}</code>=월 · <code>{DD}</code>=일 · <code>{SEQ3}</code>=일련번호 3자리(001), <code>{SEQ4}</code>=4자리(0001)<br>오른쪽 선택은 <b>일련번호를 1부터 다시 시작하는 기준</b>입니다. ‘형식에 따름’은 형식에 든 가장 작은 날짜 단위(일 › 월 › 연)가 바뀔 때 다시 시작합니다.<br>형식을 바꿔도 <b>이미 발행된 번호는 그대로</b>이고, 새로 만드는 문서부터 적용됩니다.`,'',1))+
       sg('문서별 번호',row('ncr')+row('rca')+row('i8d')+row('iss'));
   };
+  P.tg=()=>{const c=tgCfg(),inp=(k,v,ph,t)=>`<input type="${t||'text'}" value="${esc(v)}" placeholder="${esc(ph||'')}" autocomplete="off" style="width:260px" onchange="tgSet('${k}',this.value.trim());render()">`,
+    ck=(k,v)=>`<input type="checkbox" ${v?'checked':''} onchange="tgSet('${k}',this.checked);render()">`,ok=c.token&&c.chat;
+    return `<div class="help" style="margin:0 4px 12px">매일 아침 <b>지연 건 · 오늘 기한 · 이슈 분류 대기</b>를 텔레그램 그룹으로 보냅니다. HTML판이라 <b>정한 시각 이후 이 PC에서 QIS를 처음 열 때(열려 있으면 그 시각에)</b> 하루 한 번 보냅니다. 같은 날 다른 창 · PC에서 다시 보내지 않습니다.<br>
+      설정 순서: ① 텔레그램에서 <b>@BotFather</b> → <code>/newbot</code> → 받은 토큰을 아래에 입력 ② 받을 그룹에 봇을 초대하고 그 그룹에 아무 메시지나 한 번 보내기 ③ ‘받을 곳 찾기’ → 그룹 선택 ④ 시험 전송</div>`+
+    sg('연결',sv('봇 토큰','이 PC 브라우저에만 저장 — 데이터 · 백업 · 공유본에 들어가지 않습니다 (PC를 바꾸면 다시 입력)',inp('token',c.token,'123456789:AA…','password'))+
+      sv('받을 곳 (chat ID)','그룹은 -로 시작하는 숫자',`${inp('chat',c.chat,'예: -1001234567890')} <button class="b s" onclick="tgFindChats()" ${c.token?'':'disabled'}>받을 곳 찾기</button><div id="tgChats" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"></div>`)+
+      sv('시험 전송','',`<button class="b s" onclick="tgTest()" ${ok?'':'disabled'}>시험 메시지 보내기</button>`))+
+    sg('아침 요약',sv('자동 전송','',`<label class="row" style="gap:6px">${ck('on',c.on)} 켜기</label>`)+
+      sv('보낼 시각','이 시각 이후 처음 열 때 보냄',inp('time',c.time,'08:00','time'))+
+      sv('주말 제외','토 · 일요일에는 보내지 않음',ck('noWeekend',c.noWeekend))+
+      sv('세부 내용 포함','끄면 번호 · 구분 · 기한만 (조치 제목 · 이슈 제목 · 다음 행동 문구 제외) — 회사 정보 반출 규정에 맞춰 고르세요',ck('detail',c.detail))+
+      sv('마지막 전송',db.meta.tgSent?`${esc(db.meta.tgSent)}`:'아직 없음',`<button class="b s" onclick="state.tgPrev=!state.tgPrev;render()">${state.tgPrev?'미리 보기 닫기':'미리 보기'}</button> <button class="b s p" onclick="tgSendSummary(true).then(()=>{},()=>{})" ${ok?'':'disabled'}>지금 요약 보내기</button>`))+
+    (state.tgPrev?`<pre class="card" style="white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0 4px 16px">${esc(tgSummary())}</pre>`:'')};
   P.ncr=()=>sg('기한',sv('8D 보고서 회신 기한','대책 요청일(= NCR 발행일) + 일수가 회신 기한으로 자동 설정됩니다.',sNum('reply8D','일',1,60))+
       sv('간이 대책서 회신 기한','대책 요청일 + 일수. 단순 통보는 회신 기한이 없습니다.',sNum('replySimple','일',1,60))+
       sv('D3 봉쇄 회신 기한','대책 요청일 + 일수. 협력사가 대책서보다 먼저 선별·봉쇄 결과를 회신하는 기한입니다 (1일 = 24시간).',sNum('d3Days','일',1,7))+
