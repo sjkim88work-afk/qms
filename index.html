@@ -492,6 +492,46 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 .bomdd summary{cursor:pointer;list-style:revert}.bomdd[open] .ddh{display:none}.bomdd tr.on td{background:#e8f1fb;font-weight:600}.bomdd tr.bpick{cursor:pointer}.bomdd tr.bpick:hover td{background:#f0f5fb}
 .sadv{margin-top:6px}.sadv>summary{cursor:pointer;font-size:15px;font-weight:bold;margin:8px 4px 12px;color:var(--sub)}.sadv[open]>summary{color:inherit}
 .roBar{background:#eef4fb;border-bottom:1px solid #c9dbef;color:#1d3b5c;padding:8px 22px;font-size:13px}
+/* ================= 모바일 화면 ================= */
+#mswitch{display:none;text-align:center;padding:14px 0 22px;font-size:13px}
+#mswitch a{display:none}
+body.mob #mswitch,body.pcnarrow #mswitch{display:block}
+body.mob #mswitch .mon,body.pcnarrow #mswitch .moff{display:inline}
+body.mob header #hdrBk,body.mob header #hdrInstall,body.mob header #linkInfo{display:none}
+body.mob main{padding:10px 12px 0;max-width:640px;margin:0 auto}
+body.mob #nav{display:block;overflow:visible;position:sticky;top:0;z-index:5;padding:8px 12px;background:var(--card,#fff);border-bottom:1px solid var(--line,#ddd)}
+.mtabs{width:100%;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;max-width:640px;margin:0 auto}
+.mtabs button{font:inherit;font-size:15px;font-weight:600;padding:11px 8px;border:1px solid var(--line,#ccc);border-radius:10px;background:var(--card,#fff);color:inherit}
+.mtabs button.on{background:var(--pri,#1d4f73);border-color:var(--pri,#1d4f73);color:#fff}
+.mform{display:flex;flex-direction:column;gap:12px}
+.mform label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--sub,#555);font-weight:600}
+.mform input,.mform select,.mform textarea{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:10px;background:#fff;color:#16202a;width:100%;box-sizing:border-box}
+.mform .m2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mhint{font-size:13px;margin-top:-6px;color:var(--sub,#555)}
+.mph{display:flex;gap:8px;overflow-x:auto;min-height:20px}
+.mph0{font-size:13px;padding:4px 0}
+.mpi{position:relative;flex:0 0 auto}
+.mpi img{width:92px;height:92px;object-fit:cover;border-radius:10px;border:1px solid var(--line,#ddd)}
+.mpi button{position:absolute;top:-6px;right:-6px;width:26px;height:26px;border-radius:13px;border:0;background:#333;color:#fff;font-size:16px;line-height:26px;padding:0}
+.mphb{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mphb .b{text-align:center;padding:12px;font-size:15px;border-radius:10px}
+.msev{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--mut,#eef1f3)}
+.mbig{width:100%;padding:14px;font-size:17px;font-weight:700;border-radius:12px;margin-top:4px}
+.mdone{background:var(--okb,#e3f3ea);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px;line-height:1.6}
+.msec{margin-bottom:18px}
+.msec h3{font-size:15px;margin:6px 0 8px}
+.macts{padding-left:0;list-style:none;margin:0}
+.macts li{background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:10px;padding:10px 12px;margin-bottom:6px;font-size:14px;line-height:1.5}
+.mrow{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;font:inherit;font-size:14px;color:inherit;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:10px;padding:10px 12px;margin-bottom:6px}
+.mr2{font-size:12.5px;color:var(--sub,#555)}
+.mcard{display:none;position:fixed;inset:0;background:rgba(10,16,22,.45);z-index:50;align-items:flex-end;justify-content:center}
+.mcard.on{display:flex}
+.mcard-in{background:var(--card,#fff);width:100%;max-width:640px;max-height:85vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.mcard-in h3{font-size:16px;margin:0 0 10px}
+.mkv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px;margin-bottom:10px}
+.mkv span{color:var(--sub,#555)}
+.mkv b{font-weight:500;word-break:break-all}
+.mcard-in .qtrack{margin:8px 0}
 </style>
 </head>
 <body>
@@ -508,6 +548,8 @@ details>summary.sec:hover{color:var(--pri-d,#163d5a)}
 <div id="alertBar" class="recon noprint" style="display:none;background:#fde8e8;border-bottom-color:#e5a3a3;color:#7a1414"></div>
 <div id="recon" class="recon noprint" style="display:none"></div>
 <main><div class="print-only phead" id="printHead"></div><div id="view"></div></main>
+<div id="mcard" class="mcard" onclick="mobCardClose()"></div>
+<div id="mswitch" class="noprint"><a class="lk mon" onclick="mobSet('pc')">PC 화면으로 보기</a><a class="lk moff" onclick="mobSet('mobile')">📱 모바일 화면</a></div>
 
 <div class="modal-bg" id="modal">
   <div class="modal">
@@ -1206,6 +1248,115 @@ const state={setTab:'general',tab:'dash',dashMonth:today().slice(0,7),
 // 읽기 전용 공유본에서 보이는 화면 (협력사 품질 · 기준정보 · 설정 · 백업은 숨김)
 const RO_TABS=['dash','defect','inv','ncr','case','copq'];
 function go(t){if(RO&&!RO_TABS.includes(t)&&t!=='prog')t='dash';if(t==='prog'){t='case';if(typeof czUi!=='undefined')czUi.view='prog'}state.tab=t;render();window.scrollTo(0,0)}
+/* ================= 모바일 화면 (핸드폰) =================
+   현장에서 쓰는 두 가지만: ① 불량 등록(사진 촬영 · 품번 자동 · 심각도 표시) ② 진행 현황(오늘 챙길 일 · 진행 중 NCR · 최근 불량, 보기 전용)
+   판정 · 상태 · 기한은 PC 화면과 같은 함수를 그대로 씀 (sevOf · defStage · ncrSteps · 대시보드 '오늘 챙길 일').
+   화면 폭이 좁으면 자동으로 켜지고, 'PC 화면' / '모바일 화면'으로 바꿀 수 있음 (이 기기에 기억). */
+const MOB_KEY='qis_view',mobMQ=window.matchMedia?matchMedia('(max-width: 760px)'):null;
+let mobPref=(()=>{try{return localStorage.getItem(MOB_KEY)||'auto'}catch(e){return 'auto'}})();
+const mobView=()=>(mobPref==='mobile'||(mobPref!=='pc'&&!!(mobMQ&&mobMQ.matches)));
+function mobSet(v){mobPref=v;try{localStorage.setItem(MOB_KEY,v)}catch(e){}document.body.classList.toggle('mob',mobView());render();window.scrollTo(0,0)}
+if(mobMQ&&mobMQ.addEventListener)mobMQ.addEventListener('change',()=>{if(mobPref==='auto'){document.body.classList.toggle('mob',mobView());render()}});
+const mob={tab:null,form:null,photos:[],last:null,busy:false};
+const mobNew=()=>{const S=db.settings;return{date:today(),source:S.sources[0]||'',partNo:'',partName:'',supplierId:'',model:'',type:S.defectTypes[0]||'',qty:'',desc:'',owner:(typeof SRV!=='undefined'&&SRV&&SRV.name)||S.owners[0]||''}};
+function renderMobile(){
+  document.body.classList.add('mob');
+  if(!mob.tab)mob.tab=RO?'prog':'reg';
+  if(RO&&mob.tab==='reg')mob.tab='prog';
+  $('#nav').innerHTML=`<div class="mtabs">${RO?'':`<button class="${mob.tab==='reg'?'on':''}" onclick="mobTab('reg')">＋ 불량 등록</button>`}<button class="${mob.tab==='prog'?'on':''}" onclick="mobTab('prog')">진행 현황</button></div>`;
+  // 등록 중인 입력은 다른 사용자 변경으로 화면이 다시 그려져도 지우지 않음
+  if(mob.tab==='reg'&&$('#mobForm')){const sel=$('#mobForm').supplierId;if(sel&&sel.options.length!==db.suppliers.length+1){sel.innerHTML=supOpts(mob.form.supplierId,'선택')}mobSev();return}
+  $('#view').innerHTML=mob.tab==='reg'?mobRegHTML():mobProgHTML();
+  if(mob.tab==='reg'){mobPhotos();mobSev()}
+}
+function mobTab(t){mob.tab=t;$('#view').innerHTML='';render();window.scrollTo(0,0)}
+/* ---- ① 불량 등록 ---- */
+function mobRegHTML(){
+  const S=db.settings,f=mob.form||(mob.form=mobNew());
+  const done=mob.last?(()=>{const d=db.defects.find(x=>x.id===mob.last);if(!d)return '';const v=sevOf(d),st=defStage(d);
+    return `<div class="mdone"><b>등록했습니다</b> · ${esc(d.partNo||'-')} ${esc(d.type||'')} ${num(d.qty).toLocaleString()}개<br>심각도 <span class="bg ${SEV_CLS[v.grade]}">${v.grade}</span> ${v.score}점 → <b>${esc(v.resp)}</b> · <span class="bg ${st.cls}">${esc(st.label)}</span><div class="muted" style="margin-top:4px">귀책 판정 · NCR 발행은 PC 화면에서 합니다</div></div>`})():'';
+  return `${done}<form id="mobForm" class="mform" onsubmit="event.preventDefault();mobSave()" oninput="mobInput(event)" onchange="mobInput(event)">
+  <div class="mph" id="mobPh"></div>
+  <div class="mphb"><label class="b">📷 촬영<input type="file" accept="image/*" capture="environment" hidden onchange="mobAddPhotos(this)"></label><label class="b">🖼 앨범<input type="file" accept="image/*" multiple hidden onchange="mobAddPhotos(this)"></label></div>
+  <label>부품번호 *<input name="partNo" list="dlParts" autocomplete="off" autocapitalize="characters" value="${esc(f.partNo)}" placeholder="품번 또는 품명 입력"></label>
+  <div class="mhint" id="mobPart">${f.partName?`${esc(f.partName)} · ${esc(supName(f.supplierId)||'협력사 미지정')}`:''}</div>
+  <label>협력사<select name="supplierId">${supOpts(f.supplierId,'선택')}</select></label>
+  <div class="m2"><label>불량 유형 *<select name="type">${opts(S.defectTypes,f.type)}</select></label>
+  <label>수량 *<input name="qty" type="number" inputmode="numeric" min="1" value="${esc(f.qty)}"></label></div>
+  <div class="m2"><label>발생처<select name="source">${opts(S.sources,f.source)}</select></label>
+  <label>발생일<input name="date" type="date" value="${esc(f.date)}"></label></div>
+  <label>불량 내용<textarea name="desc" rows="3" placeholder="예: 파팅라인 단차로 그리스 누유, LOT 1028 전량 의심">${esc(f.desc)}</textarea></label>
+  <div class="msev" id="mobSev"></div>
+  <button class="b p mbig" type="submit" id="mobSaveBtn">등록</button>
+  </form>`;
+}
+function mobInput(e){
+  const el=e.target;if(!el.name||!mob.form)return;
+  mob.form[el.name]=el.value;
+  if(el.name==='partNo'){const p=partByNo(el.value.trim());if(p){mob.form.partName=p.name||'';mob.form.model=p.model||'';if(p.supplierId){mob.form.supplierId=p.supplierId;const s=$('#mobForm').supplierId;if(s)s.value=p.supplierId}}else{mob.form.partName=''}
+    const h=$('#mobPart');if(h)h.innerHTML=mob.form.partName?`${esc(mob.form.partName)} · ${esc(supName(mob.form.supplierId)||'협력사 미지정')}`:(el.value.trim()?'<span style="color:var(--warn)">기준정보에 없는 품번 — 그대로 등록할 수 있습니다</span>':'')}
+  mobSev();
+}
+const mobRec=()=>{const f=mob.form||mobNew();return{id:'_mob',date:f.date,source:f.source,partNo:f.partNo.trim(),partName:f.partName,supplierId:f.supplierId,model:f.model,type:f.type,qty:num(f.qty),desc:f.desc,resp:/수입/.test(f.source)?'협력사':'미정'}};
+function mobSev(){
+  const b=$('#mobSev');if(!b||!mob.form)return;
+  if(!mob.form.qty){b.innerHTML='<span class="muted">수량을 넣으면 심각도를 미리 보여 줍니다</span>';return}
+  const v=sevOf(mobRec());
+  b.innerHTML=`예상 심각도 <span class="bg ${SEV_CLS[v.grade]}">${v.grade}</span> ${v.score}점 → ${esc(v.resp)}${v.forced.length?` <span class="muted">(${esc(v.forced.join(', '))})</span>`:''}`;
+}
+async function mobAddPhotos(inp){
+  const fs=[...inp.files].filter(f=>f.type.startsWith('image/'));inp.value='';const S=db.settings;
+  for(const f of fs){try{const im=await readImg(f);mob.photos.push({id:uid(),name:f.name||'사진.jpg',caption:'',data:shrink(im,num(S.photoMax)||1600,(num(S.photoQ)||80)/100),thumb:shrink(im,320,.7),createdAt:now()})}catch(e){toast(e.message)}}
+  mobPhotos();
+}
+function mobPhotos(){const b=$('#mobPh');if(!b)return;b.innerHTML=mob.photos.length?mob.photos.map((p,i)=>`<div class="mpi"><img src="${p.thumb}" onclick="lbOpen(mob.photos,${i})" alt=""><button type="button" onclick="mob.photos.splice(${i},1);mobPhotos()" aria-label="사진 빼기">×</button></div>`).join(''):'<div class="muted mph0">불량 부위 · 라벨 사진을 찍어 두세요 (선택)</div>'}
+async function mobSave(){
+  if(mob.busy||RO)return;const f=mob.form;
+  if(!f.partNo.trim()){toast('부품번호를 입력하세요');return}
+  if(!num(f.qty)){toast('수량을 입력하세요');return}
+  if(!f.date){toast('발생일을 입력하세요');return}
+  mob.busy=true;const btn=$('#mobSaveBtn');if(btn){btn.disabled=true;btn.textContent='저장 중…'}
+  const r=mobRec();delete r.id;
+  const d={id:uid(),...r,owner:f.owner,ncrId:'',photos:[],costs:[],sev:{special:false},...(r.resp==='미정'?{inv:{costNotice:false,verdictDate:''}}:{})};
+  try{
+    if(mob.photos.length){await photoPut(mob.photos.map(p=>({id:p.id,defectId:d.id,name:p.name,caption:'',data:p.data,thumb:p.thumb,createdAt:p.createdAt,updatedAt:now()})));d.photos=mob.photos.map(p=>p.id);photoStr=null}
+  }catch(e){toast('사진 저장 실패: '+e.message+' — 불량은 사진 없이 등록합니다')}
+  db.defects.push(d);touch(d);
+  if(f.owner&&!db.settings.owners.includes(f.owner))db.settings.owners.push(f.owner);
+  save();
+  mob.last=d.id;mob.photos=[];const keep={source:f.source,date:f.date};mob.form={...mobNew(),...keep};mob.busy=false;
+  $('#view').innerHTML='';render();window.scrollTo(0,0);
+}
+/* ---- ② 진행 현황 (보기 전용) ---- */
+let dashItems=[];
+function mobProgHTML(){
+  try{renderDash()}catch(e){console.error(e)}          // 대시보드와 같은 '오늘 챙길 일'
+  const box=document.createElement('div');box.innerHTML=`<ul>${dashItems.join('')}</ul>`;
+  box.querySelectorAll('[onclick]').forEach(el=>{
+    const m=/^(editNcr|editDefect|editInv|czOpenCase)\('([^']+)'/.exec(el.getAttribute('onclick')||'');
+    if(m)el.setAttribute('onclick',`mobCard('${m[1]==='editNcr'?'ncr':m[1]==='czOpenCase'?'case':'defect'}','${m[2]}')`);
+    else if(el.tagName==='BUTTON')el.remove();else el.removeAttribute('onclick');
+  });
+  const open=db.ncrs.filter(n=>ncrStatus(n)!=='종결').map(n=>{const r=ncrSteps(n),cur=r.S[r.cur]||{};return{n,cur,due:cur.due||'',late:!!cur.late}})
+    .sort((a,b)=>(b.late-a.late)||(a.due||'9').localeCompare(b.due||'9'));
+  const recent=db.defects.filter(d=>d.date&&diffDays(d.date,today())<=14).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,30);
+  const dd=x=>{if(!x)return '';const k=diffDays(today(),x);return k<0?`<span class="bg bad">D+${-k}</span>`:k===0?'<span class="bg warn">오늘</span>':`<span class="bg ${k<=3?'warn':'mut'}">D-${k}</span>`};
+  return `<section class="msec"><h3>오늘 챙길 일 <span class="bg mut">${dashItems.length}</span></h3>${dashItems.length?`<ul class="act macts">${box.querySelector('ul').innerHTML}</ul>`:'<div class="muted">지연 · 임박 항목이 없습니다.</div>'}</section>
+  <section class="msec"><h3>진행 중 NCR <span class="bg mut">${open.length}</span></h3>${open.length?open.map(x=>`<button class="mrow" onclick="mobCard('ncr','${x.n.id}')"><span class="mr1"><b>${esc(x.n.no)}</b> ${esc(supName(x.n.supplierId))}</span><span class="mr2">${esc(x.n.partNo||'')} ${esc(x.n.title||'')}</span><span class="mr3">${stB(ncrStatus(x.n))} ${x.cur.l?`<span class="muted">${esc(x.cur.l)}</span>`:''} ${dd(x.due)}</span></button>`).join(''):'<div class="muted">진행 중인 NCR이 없습니다.</div>'}</section>
+  <section class="msec"><h3>최근 2주 불량 <span class="bg mut">${recent.length}</span></h3>${recent.length?recent.map(d=>{const st=defStage(d),v=sevOf(d);return `<button class="mrow" onclick="mobCard('defect','${d.id}')"><span class="mr1"><span class="bg ${SEV_CLS[v.grade]}">${v.grade}</span> <b>${esc(d.partNo||d.fgNo||'-')}</b> ${esc(d.type||'')} ${num(d.qty).toLocaleString()}개${(d.photos||[]).length?' 📷':''}</span><span class="mr2">${esc(d.date)} · ${esc(supName(d.supplierId)||d.source||'')}</span><span class="mr3"><span class="bg ${st.cls}">${esc(st.label)}</span></span></button>`}).join(''):'<div class="muted">최근 2주 동안 등록된 불량이 없습니다.</div>'}</section>`;
+}
+function mobCard(kind,id){
+  let h='';
+  if(kind==='ncr'){const n=db.ncrs.find(x=>x.id===id);if(!n)return;const ds=(n.defectIds||[]).map(i=>db.defects.find(d=>d.id===i)).filter(Boolean);
+    h=`<h3>${esc(n.no)} ${stB(ncrStatus(n))}</h3><div class="mkv"><span>협력사</span><b>${esc(supName(n.supplierId))}</b><span>부품</span><b>${esc(n.partNo||'')} ${esc(n.partName||'')}</b><span>제목</span><b>${esc(n.title||'-')}</b><span>요구 회신</span><b>${esc(n.reqType||'8D 보고서')}${n.repeatOf?` · <span class="bg bad">재발</span> ${esc(n.repeatOf)}`:''}</b><span>회신 기한</span><b>${esc(n.dueDate||'-')}${n.replyDate?` · 회신 ${esc(n.replyDate)}`:''}</b><span>검증 기한</span><b>${esc(n.verifyDue||'-')}</b><span>연결 불량</span><b>${ds.length}건</b></div>${ncrTrack(n)}`}
+  else if(kind==='defect'){const d=db.defects.find(x=>x.id===id);if(!d)return;const v=sevOf(d);
+    h=`<h3><span class="bg ${SEV_CLS[v.grade]}">${v.grade}</span> ${esc(d.partNo||d.fgNo||'-')} ${esc(d.partName||d.fgName||'')}</h3><div class="mkv"><span>발생</span><b>${esc(d.date)} · ${esc(d.source||'')}</b><span>협력사</span><b>${esc(supName(d.supplierId)||'-')}</b><span>불량</span><b>${esc(d.type||'')} ${num(d.qty).toLocaleString()}개</b><span>귀책</span><b>${esc(d.resp||'-')}</b><span>진행</span><b>${stageBadges(d)}</b><span>내용</span><b>${esc(d.desc||'-')}</b></div>${(d.photos||[]).length?`<button class="b" onclick="viewDefectPhotos('${d.id}')">📷 사진 ${d.photos.length}장 보기</button>`:''}`}
+  else if(kind==='case'){const c=czById('cases',id);if(!c)return;
+    h=`<h3>${esc(c.CaseNo||'')} ${esc(c.Title||'')}</h3><div class="mkv"><span>단계</span><b>${esc(c.Stage||'')}</b><span>상태</span><b>${esc(c.Status||'')}</b><span>다음 할 일</span><b>${esc(c.NextAction||'-')}</b><span>재확인</span><b>${esc(c.RecheckDate||'-')}</b></div>`}
+  const s=$('#mcard');s.innerHTML=`<div class="mcard-in" onclick="event.stopPropagation()">${h}<div class="muted" style="margin-top:10px;font-size:12px">수정 · 처리는 PC 화면에서 합니다</div><button class="b mbig" onclick="mobCardClose()">닫기</button></div>`;
+  s.classList.add('on');
+}
+function mobCardClose(){$('#mcard').classList.remove('on')}
 function render(){
   const own=!sevMemo;if(own){sevMemo=new Map();pcMemo={}}
   try{renderInner()}finally{if(own){sevMemo=null;pcMemo=null}}
@@ -1213,6 +1364,10 @@ function render(){
 function renderInner(){
   if(RO&&!RO_TABS.includes(state.tab)&&state.tab!=='prog')state.tab='dash';  // 공유본: 허용한 화면만
   try{czSyncAll()}catch(e){}
+  if(mobView()){
+    $('#dlParts').innerHTML=db.parts.map(p=>`<option value="${esc(p.partNo)}">${esc(p.name)} · ${esc(supName(p.supplierId))}</option>`).join('');
+    renderMobile();renderBrand();updateSaveInfo();return}
+  document.body.classList.remove('mob');document.body.classList.toggle('pcnarrow',mobPref==='pc'&&!!(mobMQ&&mobMQ.matches));
   $('#nav').innerHTML=TABS.filter(([k])=>!RO||RO_TABS.includes(k)).map(([k,l])=>{const n=k==='case'?czBadgeN():k==='inv'?invLateN():0;return `<button class="${state.tab===k?'on':''}" onclick="go('${k}')">${l}${n?` <span class="bg bad" style="font-size:10.5px">${n}</span>`:''}</button>`}).join('');
   $('#dlParts').innerHTML=db.parts.map(p=>`<option value="${esc(p.partNo)}">${esc(p.name)} · ${esc(supName(p.supplierId))}</option>`).join('');
   $('#dlOwners').innerHTML=db.settings.owners.map(o=>`<option value="${esc(o)}">`).join('');
@@ -1234,7 +1389,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.4.7';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.4.8';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -1595,7 +1750,7 @@ function renderDash(){
   </div>
   ${progCard()}
   ${reviewCard(m)}
-  ${(()=>{const it=actions.match(/<li[\s\S]*?<\/li>/g)||[];return `<div class="card"><h3>오늘 챙길 일 ${it.length?`<span class="bg mut">${it.length}</span>`:''}<span class="sp"></span><button class="b s" onclick="go('case')">이슈 · RCA에서 전체 보기</button></h3>${it.length?`<ul class="act">${it.slice(0,6).join('')}</ul>${it.length>6?`<div class="muted" style="font-size:12px">외 ${it.length-6}건 — <a class="lk" onclick="go('case')">전체 보기</a></div>`:''}`:'<div class="muted">지연·임박 항목이 없습니다.</div>'}</div>`})()}
+  ${(()=>{const it=dashItems=actions.match(/<li[\s\S]*?<\/li>/g)||[];return `<div class="card"><h3>오늘 챙길 일 ${it.length?`<span class="bg mut">${it.length}</span>`:''}<span class="sp"></span><button class="b s" onclick="go('case')">이슈 · RCA에서 전체 보기</button></h3>${it.length?`<ul class="act">${it.slice(0,6).join('')}</ul>${it.length>6?`<div class="muted" style="font-size:12px">외 ${it.length-6}건 — <a class="lk" onclick="go('case')">전체 보기</a></div>`:''}`:'<div class="muted">지연·임박 항목이 없습니다.</div>'}</div>`})()}
   <div class="grid g2">
     <div class="card"><h3>월별 불량 건수 (최근 12개월)</h3>${barChart(ms.map(x=>x.slice(2).replace('-','.')),[{name:'건수',values:byM.map(a=>a.length),color:'#1f5fbf'}])}</div>
     <div class="card"><h3>월별 불량 수량</h3>${barChart(ms.map(x=>x.slice(2).replace('-','.')),[{name:'수량',values:byM.map(a=>sum(a,'qty')),color:'#5b8def'}])}</div>
