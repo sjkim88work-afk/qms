@@ -214,6 +214,41 @@ const SEED = () => {
     await ctx.close();
   }
 
+  // 10. 수입검사 검출 판정 (v0.5.1) — 샘플링 한계면 사내 유출 RCA 권고 없음 · NCR 요구사항에 유출 문구
+  {
+    const { ctx, p, errs } = await fresh(browser);
+    await p.evaluate(SEED);
+    const r = await p.evaluate(() => {
+      const src = db.settings.sources.find(x => /공정|라인|조립/.test(x)) || (db.settings.sources.push('공정'), '공정');
+      const d = { id: 'e1', date: today(), source: src, supplierId: 'S1', partNo: 'P-100', partName: '스핀들 너트', type: db.settings.defectTypes[0], qty: 500, inspQty: 1000, resp: '협력사', disposition: '선별' };
+      db.defects.push(d);
+      const R = () => routeOf(d).map(x => x.t), hasRca = () => R().some(t => t.startsWith('유출 원인 분석')), btn = () => actCell(d).includes('유출 RCA');
+      const s0 = { judge: R().some(t => t.startsWith('수입검사 검출 판정')), rca: hasRca(), btn: btn(), lv: escLevel([d]) };
+      d.escJudge = '샘플링 한계';
+      const s1 = { rca: hasRca(), btn: btn(), lv: escLevel([d]), req: defaultReq('8D 보고서', today(), null, false, escLevel([d])), scope: czBuildFrom([d], null).o.RcaScope };
+      d.escJudge = '검사 항목 아님';
+      const s2 = { rca: hasRca(), btn: btn(), lv: escLevel([d]), scope: czBuildFrom([d], null).o.RcaScope };
+      d.resp = '사내'; const s3 = escLevel([d]);
+      return { s0, s1, s2, s3, src };
+    });
+    ok(r.s0.judge && !r.s0.rca && r.s0.btn && r.s0.lv === 1, '10 판정 전: 검출 판정 단계 표시 · 유출 RCA 권고는 판정 후 ' + JSON.stringify(r.s0));
+    ok(!r.s1.rca && !r.s1.btn && r.s1.lv === 2 && r.s1.req.includes('출하 전 전수') && r.s1.scope === '없음', '10 샘플링 한계: 사내 RCA 없음 · NCR에 유출 원인 · 출하 전수/자동 검출 요구 ' + JSON.stringify(r.s1).slice(0, 200));
+    ok(r.s2.rca && r.s2.btn && r.s2.lv === 1 && r.s2.scope === '유출', '10 검사 항목 아님: 사내 유출 RCA 권고 ' + JSON.stringify(r.s2));
+    ok(r.s3 === 0, '10 사내 귀책은 유출 문구 없음');
+    // 등록 폼: 공정 + 협력사일 때만 판정 칸
+    await p.evaluate(() => { const d = db.defects.find(x => x.id === 'e1'); d.resp = '협력사'; d.escJudge = ''; editDefect('e1') });
+    const v1 = await p.evaluate(() => $('#escRow').style.display !== 'none');
+    await p.selectOption('#mf [name=escJudge]', '샘플링 한계');
+    await p.selectOption('#mf [name=resp]', '사내');
+    const v2 = await p.evaluate(() => $('#escRow').style.display === 'none');
+    await p.selectOption('#mf [name=resp]', '협력사');
+    await p.evaluate(() => saveDefect('e1'));
+    const saved = await p.evaluate(() => db.defects.find(x => x.id === 'e1').escJudge);
+    ok(v1 && v2 && saved === '샘플링 한계', '10 등록 폼: 공정 · 협력사일 때만 판정 칸 · 저장 ' + JSON.stringify({ v1, v2, saved }));
+    ok(errs.length === 0, '10 페이지 오류 없음 ' + errs.join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   console.log(fails.length ? `\n${fails.length} FAIL` : '\nALL PASS');
   process.exit(fails.length ? 1 : 0);

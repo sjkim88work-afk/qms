@@ -970,7 +970,9 @@ function routeOf(d){
   const icaStep=rec=>{const lv=icaLevel(d),vi=icaVerify(d);S.push({t:`사내 대책 — ${lv}`,why:'불량 목록 후속 조치의 ‘사내 대책’ (A: 8D · B: 간이 대책) · 완료 후 유효성 검증',done:!!ic.doneDate,doneT:`완료 ${ic.doneDate||''}${vi?' · '+vi.label:''}`,btn:go('icaWrap'),bl:'사내 대책',rec})};
   if(d.resp==='협력사'){
     ncrStep(g==='C'?'C등급 — 통보 후 다음 입고 LOT 재발 확인':'협력사에 원인·대책 회신 요구');
-    if(st>=2)rcaStep('유출 원인 분석 (사내 RCA) — 수입검사에서 왜 못 걸렀나',`${d.source||''} 단계에서 발견 → 수입검사 유출`,g!=='C','유출');
+    if(st>=2){const ej=d.escJudge||'';
+      S.push({t:'수입검사 검출 판정 — 수입검사에서 왜 못 걸렀나',why:`${d.source||''} 단계에서 발견 → ① 샘플링 한계 ② 검사 항목 아님 ③ 검사 누락·오판정 중 선택`,done:!!ej,doneT:ej==='샘플링 한계'?'샘플링 한계 — 사내 RCA 없이 협력사 8D에 유출 원인 · 출하검사 대책 요구':ej,btn:go('escRow','escJudge'),bl:ej?'변경':'판정',rec:!ej&&g!=='C'});
+      if(ej&&ej!=='샘플링 한계')rcaStep(`유출 원인 분석 (사내 RCA) — ${ej}`,ej==='검사 항목 아님'?'수입검사 기준서 · 관리계획서에 이 특성 추가 검토':'검사 방법 · 판정 기준 · 검사원 교육 점검',g!=='C','유출');}
   }else if(d.resp==='사내'){
     if(c)rcaStep('사내 대책 — RCA로 관리','',true,'');
     else if(icaLevel(d)===ICA_NONE)S.push({t:'사내 대책 불필요 (기록만)',why:'C등급 — 처리 완료일 입력으로 종결, 반복되면 대책 수준을 올리세요',done:!!d.doneDate,doneT:'처리 완료',btn:'',rec:false});
@@ -995,6 +997,13 @@ const SEV_CLS={A:'svA',B:'svB',C:'svC'};   // 심각도 전용 배지 — 지연
 // 숫자만 있으면 천 단위 콤마 (예: 10000 → 10,000), 단위·문자가 섞이면 그대로
 const fmtQtyTxt=v=>{const t=String(v??'').trim();if(/^[\d,]+(\.\d+)?$/.test(t)){const [i,f]=t.replace(/,/g,'').split('.');return Number(i).toLocaleString('en-US')+(f?'.'+f:'')}return t};
 const lotOf=d=>d.delivDate?d.delivDate.replace(/-/g,''):(d.lot||'');
+// 수입검사 검출 판정 — 공정 · 출하 · 고객에서 발견된 협력사 귀책 불량을 수입검사가 왜 못 걸렀나
+// 샘플링 한계면 사내 RCA 없이 협력사 8D에 유출 원인 · 출하검사 대책을 요구. 검사 항목 아님 · 누락/오판정만 사내 유출 RCA
+const ESC_JUDGE=['샘플링 한계','검사 항목 아님','검사 누락·오판정'];
+const escAsk=d=>!!d&&stageOf(d.source)>=2&&['협력사','공동'].includes(d.resp||'협력사');
+const escRca=d=>escAsk(d)&&d.escJudge!=='샘플링 한계';           // 판정 전이거나 ②③이면 사내 유출 RCA 대상
+// NCR 요구사항의 유출 문구: 0 없음 · 1 유출 원인 · 2 + 출하 전수/자동 검출 (샘플링 한계)
+const escLevel=ds=>ds.some(d=>escAsk(d)&&d.escJudge==='샘플링 한계')?2:ds.some(escAsk)?1:0;
 function stageOf(src){src=src||'';return /고객|필드|클레임/.test(src)?4:/출하/.test(src)?3:/공정|라인|조립/.test(src)?2:1}
 function impactAuto(type){const v=(db.settings.impactMap||{})[type];return v>=1&&v<=4?v:2}
 function scopeAuto(d){const q=num(d.qty),i=num(d.inspQty);if(q<=1)return 1;if(q>=num(db.settings.ncrQty)||(i&&q/i>=0.1))return 3;return 2}
@@ -1490,7 +1499,7 @@ function fitCells(root){
 }
 (()=>{let q=null;const run=()=>{q=null;try{fitCells($('#view'))}catch(e){}try{roSweep($('#view'))}catch(e){}try{fitCharts(document)}catch(e){}};
   const start=()=>{const v=$('#view');if(!v)return setTimeout(start,50);new MutationObserver(()=>{if(!q)q=requestAnimationFrame(run)}).observe(v,{childList:true,subtree:true});run()};start()})();
-const APP_VER='0.5.0';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
+const APP_VER='0.5.1';  // QIS (구 개인 QMS) — 변경 내역: CHANGELOG.md
 function renderBrand(){
   const S=db.settings,tab=(TABS.find(t=>t[0]===state.tab)||[])[1]||'';
   $('#brand').innerHTML=S.logo?`<img class="brandlogo" src="${S.logo}" alt="로고">`:'';
@@ -1691,7 +1700,7 @@ async function printNotice(id){
   const excl=new Set(n.photoExcl||[]);
   let phs=[];try{phs=(await photoGetMany(ds.flatMap(d=>d.photos||[]))).filter(p=>!excl.has(p.id)).slice(0,9)}catch(e){}
   let att=null;if(sp){ensureContacts(sp);const a=sp.contacts.filter(c=>c.active!==false);att=a.find(c=>c.role==='품질 담당'&&c.primary)||a.find(c=>c.role==='품질 담당')||primaryOf(sp)}
-  const due=ncrDue(n),remark=(n.requirements||'').trim()||defaultReq(n.reqType||REQ_TYPES[0],due,n.far,n.siteAudit==='요청');
+  const due=ncrDue(n),remark=(n.requirements||'').trim()||defaultReq(n.reqType||REQ_TYPES[0],due,n.far,n.siteAudit==='요청',escLevel(ds));
   const project=n.project||n.model||part?.model||ds[0]?.model||'';
   const inv=(n.stock&&n.stock.length?n.stock:STOCK_DEF.map(l=>({loc:l}))).map(r=>({loc:r.loc||'',st:r.stocked??r.qty??'',ng:r.ng??''})).filter(r=>r.loc||r.st||r.ng);
   const sg=S.signs||{},signer=(role,name)=>name?`${role} ${esc(name)}${sg[name]?`<img class="sg" src="${sg[name]}">`:''}`:'';
@@ -1959,7 +1968,7 @@ function actCell(d){
   else if(r==='미정'&&!done)line('FAR',`<button class="b s noprint" onclick="editInv('${d.id}','inv_farReq')">FAR 요청</button>`);
   // RCA (사내 원인분석)
   if(c)line('RCA',`<a class="bg inf" onclick="czOpenCase('${c.id}','cause')" title="${esc(c.Title||'')}">${esc(c.CaseNo)} · ${esc(c.Stage||'')}</a>`);
-  else if(!done&&!(d.ica&&(icaStarted(d.ica)||d.ica.doneDate))&&(['사내','공동','미정'].includes(r)||(r==='협력사'&&stageOf(d.source)>=2)))
+  else if(!done&&!(d.ica&&(icaStarted(d.ica)||d.ica.doneDate))&&(['사내','공동','미정'].includes(r)||(r==='협력사'&&stageOf(d.source)>=2&&d.escJudge!=='샘플링 한계')))
     line('RCA',`<button class="b s noprint" onclick="czFromDefect('${d.id}')" title="${r==='협력사'?'수입검사에서 왜 못 걸렀는지 사내 유출 원인 분석':'사내 원인분석 요청'}">${r==='협력사'?'유출 RCA':'RCA 요청'}</button>`);
   // 사내 대책 (RCA가 없을 때)
   if(!c&&['사내','공동'].includes(r)){const ch=icaChip(d);if(ch)line('대책',ch);else if(!done){const lv=icaLevel(d);line('대책',`<button class="b s noprint ${lv!==ICA_NONE?'p':''}" onclick="editIca('${d.id}')" title="권장 수준: ${esc(lv)}">사내 대책</button>`)}}
@@ -2000,7 +2009,7 @@ function editDefect(id,copy){
   if(copy){d={...d,date:today(),status:'',doneDate:'',closed:undefined,ncrId:'',qty:'',lot:'',delivDate:'',costs:[],claim:undefined,photos:[],inv:undefined,ica:undefined,logs:[],sevLock:undefined,sev:d.sev?{impact:d.sev.impact,special:d.sev.special}:undefined};id=null}
   const body=`<div class="fgrp"><div class="gh">발생 정보</div><div class="fg fg4">
     <label>발생일 *<input type="date" name="date" value="${esc(d.date)}"></label>
-    <label>발생처<select name="source" onchange="srcLayout();rcvHint()">${opts(S.sources,d.source)}</select></label>
+    <label>발생처<select name="source" onchange="srcLayout();rcvHint();setTimeout(escShow)">${opts(S.sources,d.source)}</select></label>
     <label>차종<input name="model" value="${esc(d.model)}"></label>
     <label>담당자<input name="owner" list="dlOwners" value="${esc(d.owner)}"></label>
   </div></div>
@@ -2029,6 +2038,7 @@ function editDefect(id,copy){
     <label class="full">임시조치 (봉쇄 · 재고 처리)<textarea name="containment">${esc(d.containment)}</textarea></label>
     <label>처리<select name="disposition">${opts(S.dispositions,d.disposition,true)}</select></label>
     <label>귀책<select name="resp" onchange="respChanged()">${opts(RESP_OPTS,d.resp)}</select></label>
+    <label id="escRow" title="공정 · 출하 · 고객에서 발견된 협력사 귀책 불량 — 샘플링 한계면 사내 RCA 없이 협력사 8D에 유출 원인 · 출하검사 대책 요구">수입검사 검출 판정<select name="escJudge"><option value="">판정 전</option>${ESC_JUDGE.map((x,i)=>`<option value="${x}" ${d.escJudge===x?'selected':''}>${'①②③'[i]} ${x}</option>`).join('')}</select></label>
     <label>처리 완료일 <span style="font-size:11px">(NCR 없는 건)</span><input type="date" name="doneDate" value="${esc(d.doneDate)}"></label>
     <label class="row" style="flex-direction:row;align-items:center;gap:6px;margin-top:16px"><input type="checkbox" name="closedChk" ${d.closed?'checked':''} onchange="$('#closeRsn').style.display=this.checked?'':'none'"> 수동 종결 (예외)</label>
     <label class="full" id="closeRsn" style="${d.closed?'':'display:none'}">수동 종결 사유 (필수 · 진행 기록에 남습니다)<input name="closedReason" value="${esc(d.closed?.reason)}" placeholder="예: 중복 등록, 고객 특채 확정, 오판정 확인 등"></label>
@@ -2358,8 +2368,10 @@ function respChanged(init){
   const iw=$('#invWrap');if(iw&&r==='미정')iw.open=true;
   const cw=$('#icaWrap');if(cw)cw.style.display=r==='사내'?'':'none';
   const sl=$('#shareL');if(sl)sl.style.display=r==='공동'||(f.inv_verdict&&f.inv_verdict.value==='공동')?'':'none';
-  icaShow();
+  icaShow();escShow();
 }
+// 수입검사 검출 판정 칸은 공정 · 출하 · 고객 발견 + 협력사/공동 귀책일 때만
+function escShow(){const f=$('#mf'),w=$('#escRow');if(!f||!w||!f.source||!f.resp)return;w.style.display=escAsk({source:f.source.value,resp:f.resp.value})?'':'none'}
 function icaSync(){
   const f=$('#mf');if(!f||!f.ica_level||typeof sevDraft!=='function')return;
   const a=icaLevelAuto(sevDraft());const e=$('#icaAuto');if(e)e.textContent=a;
@@ -3631,8 +3643,9 @@ async function descTemplate(){
   if(ta.value.trim()&&!await askConfirm({title:'작성 양식을 추가할까요?',msg:'이미 작성한 내용 <b>아래에</b> 양식이 추가됩니다.',ok:'아래에 추가',danger:false}))return;
   ta.value=(ta.value.trim()?ta.value.trim()+'\n\n':'')+t;mfDirty=true;ta.focus();
 }
-function defaultReq(type,due,far,site){
+function defaultReq(type,due,far,site,esc){
   let b=defaultReq0(type,due);const k=()=>(b.match(/^\d+\./gm)||[]).length+1;
+  if(esc&&type!=='단순 통보')b+=`\n${k()}. Outflow cause — why not detected at your outgoing inspection, and detection countermeasure${esc>=2?' (100% inspection or error-proofing before shipment)':''} (유출 원인 · 출하검사 대책${esc>=2?' — 출하 전 전수 또는 자동 검출':''})`;
   if(far&&far.reqDate){const fd=far.due?`${+far.due.slice(5,7)}/${+far.due.slice(8,10)}`:'';b+=`\n${k()}. Failure analysis report (FAR) for returned samples${far.sampleQty?' ('+far.sampleQty+')':''} : ~ ${fd} 限`}
   if(site)b+=`\n${k()}. On-site audit at your plant will be conducted (현장 감사 예정)`;
   return b;
@@ -3644,7 +3657,7 @@ function defaultReq0(type,due){
 }
 function ncrVerifyDueAuto(n){const S=db.settings,b=n.reqType==='단순 통보'?(n.notifyDate||n.issueDate):(n.validity==='적정'&&n.approvedDate?n.approvedDate:n.issueDate);return b?addDays(b,S.verifyDays):''}
 function ncrDue(n){return n.reqType==='단순 통보'?'':n.dueDate||addDays(n.requestDate||n.issueDate||today(),typeDays(n.reqType))}
-function fillReq(){const f=$('#mf');const due=f.dueDate.value||addDays(f.requestDate.value||f.issueDate.value||today(),typeDays(f.reqType.value));f.requirements.value=defaultReq(f.reqType.value,due,farFormVals(),!!(f.siteAudit&&f.siteAudit.value==='요청'));mfDirty=true}
+function fillReq(){const f=$('#mf');const due=f.dueDate.value||addDays(f.requestDate.value||f.issueDate.value||today(),typeDays(f.reqType.value));f.requirements.value=defaultReq(f.reqType.value,due,farFormVals(),!!(f.siteAudit&&f.siteAudit.value==='요청'),escLevel((curLinks||[]).map(i=>db.defects.find(d=>d.id===i)).filter(Boolean)));mfDirty=true}
 async function renderNcrPhotos(){
   const b=$('#ncrPhotoBox');if(!b)return;
   const ids=curLinks.flatMap(i=>db.defects.find(d=>d.id===i)?.photos||[]);
@@ -6344,7 +6357,7 @@ function czBuildFrom(ds,n){
   if(o.Origin==='고객사')o.CustNotify='필요';
   const rs=[...new Set(ds.map(x=>x.resp||'미정'))],st=Math.max(...(ds.length?ds:[d]).map(x=>stageOf(x.source)));
   if(!o.CauseOccur){const r=ds.map(x=>(x.ica&&x.ica.d4)||(x.inv&&x.inv.rca)).filter(Boolean)[0];if(r)o.CauseOccur='[불량 기록] '+r}
-  o.RcaScope=rs.includes('미정')||rs.includes('공동')||rs.length>1?'발생+유출':rs[0]==='사내'?(st>=4?'발생+유출':'발생'):rs[0]==='협력사'?(st>=2?'유출':'없음'):'';
+  o.RcaScope=rs.includes('미정')||rs.includes('공동')||rs.length>1?'발생+유출':rs[0]==='사내'?(st>=4?'발생+유출':'발생'):rs[0]==='협력사'?(st>=2&&(ds.length?ds:[d]).some(escRca)?'유출':'없음'):'';
   return {o,g:sg.g};
 }
 function czAttach(c,ds,n){ds.forEach(d=>{d.caseId=c.id;touch(d)});if(n){n.caseId=c.id;touch(n)}czSyncCase(c)}
