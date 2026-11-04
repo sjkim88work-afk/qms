@@ -22,6 +22,8 @@ jobs:
         run: node tests/workflow_test.js
       - name: 이슈 시험 (v0.6.0)
         run: node tests/issue_test.js
+      - name: 텔레그램 아침 요약 시험 (v0.6.1)
+        run: node tests/telegram_test.js
       - name: 버전 표기 일치 (index.html · sw.js · CHANGELOG)
         run: |
           v=$(grep -oE "APP_VER='[^']*'" index.html | head -1 | cut -d"'" -f2)
